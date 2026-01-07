@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
-import { useToast } from "@/hooks/use-toast"
+import { notify } from "@/hooks/use-notification"
 import { Calendar, DollarSign, Eye, FileText, Clock, Trash2 } from "lucide-react"
 
 interface ProviderQuotationItem {
@@ -49,6 +49,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
   const [filterDate, setFilterDate] = useState("")
   const [availableServices, setAvailableServices] = useState<{ id: number; name: string; basePrice: number | null }[]>([])
   const [selectedExistingServiceId, setSelectedExistingServiceId] = useState<string>("")
+  const [selectedExistingServiceName, setSelectedExistingServiceName] = useState<string>("")
   const [existingPlanSearch, setExistingPlanSearch] = useState("")
   const [existingPlanFocused, setExistingPlanFocused] = useState(false)
   const [customPlanName, setCustomPlanName] = useState("")
@@ -58,7 +59,6 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
   const [customPdfs, setCustomPdfs] = useState<string[]>([])
   const [showExistingPlanSection, setShowExistingPlanSection] = useState(false)
   const [showCustomPlanSection, setShowCustomPlanSection] = useState(false)
-  const { toast } = useToast()
   const clientRejectedSectionRef = useRef<HTMLDivElement | null>(null)
 
   const handleEnablePayment = async () => {
@@ -73,28 +73,17 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
       if (error) {
         console.error("Error enabling payment for quotation", error)
-        toast({
-          title: "No se pudo habilitar el pago",
-          description: "Intenta nuevamente en unos minutos.",
-          variant: "destructive",
-        })
+        notify("error", "Intenta nuevamente en unos minutos.", "No se pudo habilitar el pago")
         return
       }
 
       setItems((prev) => prev.map((q) => (q.id === selected.id ? { ...q, paymentEnabled: true } : q)))
       setSelected((prev) => (prev ? { ...prev, paymentEnabled: true } : prev))
 
-      toast({
-        title: "Pago habilitado",
-        description: "El cliente ahora puede abonar esta cotización.",
-      })
+      notify("success", "El cliente ahora puede abonar esta cotización.", "Pago habilitado")
     } catch (e) {
       console.error("Unexpected error enabling payment", e)
-      toast({
-        title: "Error inesperado",
-        description: "Ocurrió un problema al habilitar el pago.",
-        variant: "destructive",
-      })
+      notify("error", "Ocurrió un problema al habilitar el pago.", "Error inesperado")
     }
   }
 
@@ -313,11 +302,11 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       }
     } catch (e) {
       console.error("Unexpected error uploading custom plan files:", e)
-      toast({
-        title: "Error al subir archivos",
-        description: "Ocurrió un problema al subir los archivos del plan personalizado.",
-        variant: "destructive",
-      })
+      notify(
+        "error",
+        "Ocurrió un problema al subir los archivos del plan personalizado.",
+        "Error al subir archivos",
+      )
     }
   }
 
@@ -365,32 +354,20 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
     if (!selected) return
     const serviceId = selectedExistingServiceId ? Number(selectedExistingServiceId) : null
     if (!serviceId || Number.isNaN(serviceId)) {
-      toast({
-        title: "Selecciona un plan",
-        description: "Debes elegir un plan existente para enviarlo al cliente.",
-        variant: "destructive",
-      })
+      notify("error", "Debes elegir un plan existente para enviarlo al cliente.", "Selecciona un plan")
       return
     }
 
     // Si está abierta la sección de "Enviar otro plan" pero no se eligió ninguno,
     // mostramos un mensaje claro antes de validar precio.
     if (showExistingPlanSection && !selectedExistingServiceId) {
-      toast({
-        title: "Selecciona un plan",
-        description: "Elegí un plan del catálogo para poder enviar la propuesta.",
-        variant: "destructive",
-      })
+      notify("error", "Elegí un plan del catálogo para poder enviar la propuesta.", "Selecciona un plan")
       return
     }
 
     const numericPrice = priceInput.trim() ? Number(priceInput) : null
     if (numericPrice == null || Number.isNaN(numericPrice) || numericPrice <= 0) {
-      toast({
-        title: "Precio inválido",
-        description: "Ingresa un importe válido para la cotización.",
-        variant: "destructive",
-      })
+      notify("error", "Ingresa un importe válido para la cotización.", "Precio inválido")
       return
     }
 
@@ -420,11 +397,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
       if (error) {
         console.error("Error sending existing plan for quotation", error)
-        toast({
-          title: "No se pudo enviar el plan",
-          description: "Intenta nuevamente en unos minutos.",
-          variant: "destructive",
-        })
+        notify("error", "Intenta nuevamente en unos minutos.", "No se pudo enviar el plan")
       } else {
         const chosen = availableServices.find((s) => s.id === serviceId)
         setItems((prev) =>
@@ -450,10 +423,8 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
         setExtraDocsRequestedInput(false)
         setExtraDocsMessageInput("")
         setSelectedExistingServiceId("")
-        toast({
-          title: "Plan enviado",
-          description: "Se envió otro plan al cliente para esta cotización.",
-        })
+        setSelectedExistingServiceName("")
+        notify("success", "Se envió otro plan al cliente para esta cotización.", "Plan enviado")
       }
     } finally {
       setSaving(false)
@@ -465,21 +436,13 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
     const name = customPlanName.trim()
     if (!name) {
-      toast({
-        title: "Nombre requerido",
-        description: "Ingresa un nombre para el plan personalizado.",
-        variant: "destructive",
-      })
+      notify("error", "Ingresa un nombre para el plan personalizado.", "Nombre requerido")
       return
     }
 
     const numericPrice = priceInput.trim() ? Number(priceInput) : null
     if (numericPrice == null || Number.isNaN(numericPrice) || numericPrice <= 0) {
-      toast({
-        title: "Precio inválido",
-        description: "Ingresa un importe válido para la cotización.",
-        variant: "destructive",
-      })
+      notify("error", "Ingresa un importe válido para la cotización.", "Precio inválido")
       return
     }
 
@@ -493,13 +456,14 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       } = await supabase.auth.getUser()
 
       if (!user) {
-        toast({
-          title: "Sesión requerida",
-          description: "Debes iniciar sesión como proveedor para crear un plan personalizado.",
-          variant: "destructive",
-        })
+        notify(
+          "error",
+          "Debes iniciar sesión como proveedor para crear un plan personalizado.",
+          "Sesión requerida",
+        )
         return
       }
+      const handledByEmail = user.email || null
 
       const { data: service, error: serviceError } = await supabase
         .from("services")
@@ -521,11 +485,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
       if (serviceError || !service) {
         console.error("Error creating custom plan", serviceError)
-        toast({
-          title: "No se pudo crear el plan personalizado",
-          description: "Intenta nuevamente en unos minutos.",
-          variant: "destructive",
-        })
+        notify("error", "Intenta nuevamente en unos minutos.", "No se pudo crear el plan personalizado")
         return
       }
 
@@ -545,11 +505,11 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
       if (quotationError) {
         console.error("Error linking custom plan to quotation", quotationError)
-        toast({
-          title: "Plan creado pero no vinculado",
-          description: "Se creó el plan personalizado pero hubo un problema al vincularlo a la cotización.",
-          variant: "destructive",
-        })
+        notify(
+          "error",
+          "Se creó el plan personalizado pero hubo un problema al vincularlo a la cotización.",
+          "Plan creado pero no vinculado",
+        )
         return
       }
 
@@ -583,10 +543,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       setCustomPdfs([])
       setShowCustomPlanSection(false)
 
-      toast({
-        title: "Plan personalizado enviado",
-        description: "Se creó y envió un plan personalizado al cliente.",
-      })
+      notify("success", "Se creó y envió un plan personalizado al cliente.", "Plan personalizado enviado")
     } finally {
       setSaving(false)
     }
@@ -595,13 +552,16 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
   const handleSaveProposal = async () => {
     if (!selected) return
 
+    // Validación previa: si la sección de "Enviar otro plan" está abierta pero no se eligió ninguno,
+    // mostramos un mensaje claro y no continuamos.
+    if (showExistingPlanSection && !selectedExistingServiceId) {
+      notify("error", "Elegí un plan del catálogo para poder enviar la propuesta.", "Selecciona un plan")
+      return
+    }
+
     const numericPrice = priceInput.trim() ? Number(priceInput) : null
     if (numericPrice == null || Number.isNaN(numericPrice) || numericPrice <= 0) {
-      toast({
-        title: "Precio inválido",
-        description: "Ingresa un importe válido para la cotización.",
-        variant: "destructive",
-      })
+      notify("error", "Ingresa un importe válido para la cotización.", "Precio inválido")
       return
     }
 
@@ -642,11 +602,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
       if (error) {
         console.error("Error updating quotation proposal", error)
-        toast({
-          title: "No se pudo guardar la propuesta",
-          description: "Intenta nuevamente en unos minutos.",
-          variant: "destructive",
-        })
+        notify("error", "Intenta nuevamente en unos minutos.", "No se pudo guardar la propuesta")
       } else {
         setItems((prev) =>
           prev.map((q) =>
@@ -668,10 +624,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
         setProviderNotesInput("")
         setExtraDocsRequestedInput(false)
         setExtraDocsMessageInput("")
-        toast({
-          title: "Propuesta enviada",
-          description: "La cotización fue enviada al cliente.",
-        })
+        notify("success", "La cotización fue enviada al cliente.", "Propuesta enviada")
       }
     } finally {
       setSaving(false)
@@ -772,11 +725,11 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                     } = await supabase.auth.getUser()
 
                     if (!user) {
-                      toast({
-                        title: "Sesión requerida",
-                        description: "Debes iniciar sesión como proveedor para eliminar una cotización.",
-                        variant: "destructive",
-                      })
+                      notify(
+                        "error",
+                        "Debes iniciar sesión como proveedor para eliminar una cotización.",
+                        "Sesión requerida",
+                      )
                       return
                     }
 
@@ -787,19 +740,12 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
                     if (error) {
                       console.error("Error deleting quotation by provider", error)
-                      toast({
-                        title: "No se pudo eliminar la cotización",
-                        description: "Intenta nuevamente en unos minutos.",
-                        variant: "destructive",
-                      })
+                      notify("error", "Intenta nuevamente en unos minutos.", "No se pudo eliminar la cotización")
                       return
                     }
 
                     setItems((prev) => prev.filter((x) => x.id !== q.id))
-                    toast({
-                      title: "Cotización eliminada",
-                      description: "La cotización fue eliminada correctamente.",
-                    })
+                    notify("success", "La cotización fue eliminada correctamente.", "Cotización eliminada")
                   }}
                 >
                   <Trash2 className="w-4 h-4" />
@@ -886,11 +832,11 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                     } = await supabase.auth.getUser()
 
                     if (!user) {
-                      toast({
-                        title: "Sesión requerida",
-                        description: "Debes iniciar sesión como proveedor para eliminar una cotización.",
-                        variant: "destructive",
-                      })
+                      notify(
+                        "error",
+                        "Debes iniciar sesión como proveedor para eliminar una cotización.",
+                        "Sesión requerida",
+                      )
                       return
                     }
 
@@ -901,19 +847,12 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
                     if (error) {
                       console.error("Error deleting quotation by provider", error)
-                      toast({
-                        title: "No se pudo eliminar la cotización",
-                        description: "Intenta nuevamente en unos minutos.",
-                        variant: "destructive",
-                      })
+                      notify("error", "Intenta nuevamente en unos minutos.", "No se pudo eliminar la cotización")
                       return
                     }
 
                     setItems((prev) => prev.filter((x) => x.id !== q.id))
-                    toast({
-                      title: "Cotización eliminada",
-                      description: "La cotización fue eliminada correctamente.",
-                    })
+                    notify("success", "La cotización fue eliminada correctamente.", "Cotización eliminada")
                   }}
                 >
                   <Trash2 className="w-4 h-4" />
@@ -1105,15 +1044,14 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                 <div className="mt-3 space-y-2 border rounded-md p-3 bg-gray-50">
                   <label className="font-medium">Enviar otro plan existente</label>
                   <Input
-                    placeholder="Selecciona o busca un plan del catálogo..."
-                    value={
-                      existingPlanSearch ||
-                      availableServices.find((s) => String(s.id) === selectedExistingServiceId)?.name ||
-                      ""
+                    placeholder={
+                      "Selecciona o busca un plan del catálogo..."
                     }
+                    value={existingPlanSearch || selectedExistingServiceName}
                     onChange={(e) => {
                       setExistingPlanSearch(e.target.value)
                       setSelectedExistingServiceId("")
+                      setSelectedExistingServiceName("")
                     }}
                     onFocus={() => setExistingPlanFocused(true)}
                     onBlur={() => {
@@ -1123,7 +1061,13 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                     className="text-sm"
                   />
                   {existingPlanFocused && filteredAvailableServices.length > 0 && (
-                    <div className="max-h-40 overflow-auto border rounded-md bg-white text-sm">
+                    <div
+                      className="max-h-40 overflow-auto border rounded-md bg-white text-sm"
+                      onMouseDown={(e) => {
+                        // Evita que el input pierda el foco antes de seleccionar
+                        e.preventDefault()
+                      }}
+                    >
                       {filteredAvailableServices.map((svc) => (
                         <button
                           key={svc.id}
@@ -1131,15 +1075,23 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                           className={`w-full text-left px-3 py-2 hover:bg-gray-100 ${
                             String(svc.id) === selectedExistingServiceId ? "bg-gray-100 font-medium" : ""
                           }`}
-                          onClick={() => {
+                          onMouseDown={(e) => {
+                            e.preventDefault()
                             setSelectedExistingServiceId(String(svc.id))
+                            setSelectedExistingServiceName(svc.name)
                             // Si el plan tiene un precio base y el campo de precio está vacío,
                             // lo usamos como valor por defecto para que sea más cómodo.
                             if ((!priceInput || Number(priceInput) <= 0) && svc.basePrice != null) {
                               setPriceInput(String(svc.basePrice))
                             }
+                            // Limpiamos el texto de búsqueda para que se muestre el nombre del plan seleccionado
                             setExistingPlanSearch("")
                             setExistingPlanFocused(false)
+                            notify(
+                              "info",
+                              `Se enviará el plan "${svc.name}" al cliente cuando confirmes la propuesta.`,
+                              "Plan seleccionado",
+                            )
                           }}
                         >
                           {svc.name}
@@ -1205,16 +1157,6 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                       <p className="text-muted-foreground">{customPdfs.length} PDF(s) agregado(s).</p>
                     )}
                   </div>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-1"
-                    onClick={handleCreateCustomPlan}
-                    disabled={saving}
-                  >
-                    Crear y enviar plan personalizado
-                  </Button>
                 </div>
               )}
             </div>
@@ -1267,10 +1209,6 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                 disabled={saving || !selected}
                 onClick={async () => {
                   if (!selected) return
-                  const confirmed = window.confirm(
-                    "¿Seguro que deseas rechazar esta cotización? El cliente verá que fue rechazada.",
-                  )
-                  if (!confirmed) return
 
                   const supabase = createClient()
                   const { error } = await supabase
@@ -1280,20 +1218,13 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
                   if (error) {
                     console.error("Error rejecting quotation by provider", error)
-                    toast({
-                      title: "No se pudo rechazar la cotización",
-                      description: "Intenta nuevamente en unos minutos.",
-                      variant: "destructive",
-                    })
+                    notify("error", "Intenta nuevamente en unos minutos.", "No se pudo rechazar la cotización")
                     return
                   }
 
                   setItems((prev) => prev.map((q) => (q.id === selected.id ? { ...q, status: "rejected" } : q)))
                   setSelected(null)
-                  toast({
-                    title: "Cotización rechazada",
-                    description: "El cliente verá que la propuesta fue rechazada.",
-                  })
+                  notify("success", "El cliente verá que la propuesta fue rechazada.", "Cotización rechazada")
                 }}
               >
                 Rechazar
@@ -1305,30 +1236,19 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                   disabled={saving || !selected}
                   onClick={async () => {
                     if (!selected) return
-                    const confirmed = window.confirm(
-                      "¿Seguro que deseas eliminar esta cotización? El cliente dejará de verla.",
-                    )
-                    if (!confirmed) return
 
                     const supabase = createClient()
                     const { error } = await supabase.from("quotations").delete().eq("id", selected.id)
 
                     if (error) {
                       console.error("Error deleting quotation by provider", error)
-                      toast({
-                        title: "No se pudo eliminar la cotización",
-                        description: "Intenta nuevamente en unos minutos.",
-                        variant: "destructive",
-                      })
+                      notify("error", "Intenta nuevamente en unos minutos.", "No se pudo eliminar la cotización")
                       return
                     }
 
                     setItems((prev) => prev.filter((q) => q.id !== selected.id))
                     setSelected(null)
-                    toast({
-                      title: "Cotización eliminada",
-                      description: "La cotización fue eliminada correctamente.",
-                    })
+                    notify("success", "La cotización fue eliminada correctamente.", "Cotización eliminada")
                   }}
                 >
                   Eliminar

@@ -266,9 +266,50 @@ export function ServiceManagement() {
 
       if (!user) return
 
+      const { count: quotationsCount } = await supabase
+        .from("quotations")
+        .select("id", { head: true, count: "exact" })
+        .eq("service_id", serviceId)
+        .eq("provider_id", user.id)
+
+      const { count: ordersCount } = await supabase
+        .from("orders")
+        .select("id", { head: true, count: "exact" })
+        .eq("service_id", serviceId)
+        .eq("provider_id", user.id)
+
+      const hasDependencies = (quotationsCount || 0) > 0 || (ordersCount || 0) > 0
+      if (hasDependencies) {
+        const { error: disableError } = await supabase
+          .from("services")
+          .update({ is_public: false, is_active: false })
+          .eq("id", serviceId)
+          .eq("provider_id", user.id)
+
+        if (disableError) {
+          console.error("Error disabling service with dependencies:", disableError)
+          toast({
+            title: "No se pudo eliminar el servicio",
+            description:
+              "Este plan tiene cotizaciones/órdenes asociadas y no se puede borrar. Tampoco se pudo desactivar. Intenta nuevamente más tarde.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        removeService(serviceId)
+        toast({
+          title: "Plan desactivado",
+          description:
+            "Este plan tenía cotizaciones/órdenes asociadas, por eso no se pudo eliminar. Se desactivó y dejó de ser público.",
+        })
+        return
+      }
+
       const { error } = await supabase
         .from("services")
         .delete()
+        .select("id")
         .eq("id", serviceId)
         .eq("provider_id", user.id)
 
@@ -276,7 +317,12 @@ export function ServiceManagement() {
         console.error("Error deleting service:", error)
         toast({
           title: "No se pudo eliminar el servicio",
-          description: error.message || "Intenta nuevamente más tarde.",
+          description:
+            (error as any)?.message ||
+            (error as any)?.details ||
+            (error as any)?.hint ||
+            JSON.stringify(error) ||
+            "Intenta nuevamente más tarde.",
           variant: "destructive",
         })
         return

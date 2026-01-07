@@ -122,7 +122,7 @@ export async function requestPasswordReset(formData: FormData) {
     return { error: 'Debes ingresar un email.' }
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://sistema-de-proveedor-de-servicios-d.vercel.app/auth/reset'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://sistema-de-proveedor-de-servicios-d.vercel.app'
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${siteUrl}/auth/reset`,

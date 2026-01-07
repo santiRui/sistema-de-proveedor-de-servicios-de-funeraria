@@ -16,7 +16,7 @@ export function AdminHeader() {
           <p className="text-xs text-emerald-600 font-medium">Super Admin</p>
         </div>
         <Avatar className="h-9 w-9 border-2 border-emerald-100">
-          <AvatarImage src="https://github.com/shadcn.png" />
+          <AvatarImage src="/icon.svg" />
           <AvatarFallback className="bg-emerald-100 text-emerald-700">AD</AvatarFallback>
         </Avatar>
       </div>

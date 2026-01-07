@@ -208,11 +208,6 @@ export function MyQuotations() {
   }
 
   const handleCancelRequest = async (id: number) => {
-    const confirmed = window.confirm(
-      "¿Seguro que deseas cancelar y eliminar esta solicitud de cotización? Esta acción no se puede deshacer.",
-    )
-    if (!confirmed) return
-
     const supabase = createClient()
 
     // Aseguramos que se borre/oculte solo la cotización del usuario autenticado
@@ -330,11 +325,6 @@ export function MyQuotations() {
   }
 
   const handlePayQuotation = async (id: number) => {
-    const confirmed = window.confirm(
-      "Como estamos en modo de prueba, se marcará esta cotización como abonada y aprobada. ¿Deseas continuar?",
-    )
-    if (!confirmed) return
-
     const quotation = items.find((q) => q.id === id)
     if (!quotation) {
       toast({
