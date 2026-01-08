@@ -27,19 +27,23 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/provider/dashboard?error=MissingCodeOrState', request.url))
   }
 
+  const marketplaceClientId = process.env.MERCADOPAGO_MARKETPLACE_CLIENT_ID
+  const marketplaceClientSecret = process.env.MERCADOPAGO_MARKETPLACE_CLIENT_SECRET
+
+  if (!marketplaceClientId || !marketplaceClientSecret) {
+    console.error('Missing MERCADOPAGO_MARKETPLACE_CLIENT_ID or MERCADOPAGO_MARKETPLACE_CLIENT_SECRET env vars')
+    return NextResponse.redirect(new URL('/provider/dashboard?error=MissingMarketplaceCredentials', request.url))
+  }
+
   const { data: mpCreds, error: mpError } = await supabase
     .from('provider_mp_credentials')
-    .select('mp_client_id, mp_client_secret, mp_oauth_state')
+    .select('mp_oauth_state')
     .eq('provider_id', user.id)
     .maybeSingle()
 
   if (mpError) {
     console.error('Error reading provider_mp_credentials', mpError)
     return NextResponse.redirect(new URL('/provider/dashboard?error=MpCredentialsReadFailed', request.url))
-  }
-
-  if (!mpCreds?.mp_client_id || !mpCreds?.mp_client_secret) {
-    return NextResponse.redirect(new URL('/provider/dashboard?error=MpClientIdSecretMissing', request.url))
   }
 
   if (!mpCreds?.mp_oauth_state || mpCreds.mp_oauth_state !== state) {
@@ -55,8 +59,8 @@ export async function GET(request: Request) {
   const redirectUri = `${siteUrl.replace(/\/$/, '')}/api/mercadopago/oauth/callback`
 
   const body = new URLSearchParams()
-  body.set('client_id', mpCreds.mp_client_id)
-  body.set('client_secret', mpCreds.mp_client_secret)
+  body.set('client_id', marketplaceClientId)
+  body.set('client_secret', marketplaceClientSecret)
   body.set('grant_type', 'authorization_code')
   body.set('code', code)
   body.set('redirect_uri', redirectUri)

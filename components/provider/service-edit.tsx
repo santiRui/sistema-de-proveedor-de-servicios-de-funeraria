@@ -25,6 +25,7 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
     name: "",
     description: "",
     price: "",
+    billingMode: "one_time" as "one_time" | "monthly" | "both",
     areas: [] as string[],
     images: [] as string[],
     videos: [] as string[],
@@ -74,7 +75,7 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
 
         const { data, error } = await supabase
           .from("services")
-          .select("id, name, description, base_price, service_areas, image_urls, video_urls, pdf_urls")
+          .select("id, name, description, base_price, billing_mode, service_areas, image_urls, video_urls, pdf_urls")
           .eq("id", serviceId)
           .eq("provider_id", user.id)
           .single()
@@ -88,6 +89,7 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
           name: data.name || "",
           description: data.description || "",
           price: data.base_price != null ? String(data.base_price) : "",
+          billingMode: ((data as any).billing_mode as any) || "one_time",
           areas: (data.service_areas as string[] | null) || profile?.service_areas || [],
           images: (data.image_urls as string[] | null) || [],
           videos: (data.video_urls as string[] | null) || [],
@@ -154,9 +156,16 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    })
+  }
+
+  const handleBillingModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      billingMode: e.target.value as any,
     }))
   }
 
@@ -242,6 +251,7 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
           name: formData.name,
           description: formData.description,
           base_price,
+          billing_mode: formData.billingMode,
           service_areas: formData.areas,
           image_urls: formData.images,
           video_urls: formData.videos,
@@ -292,6 +302,21 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
                   onChange={handleChange}
                   required
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Modalidad de cobro</label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                  value={formData.billingMode}
+                  onChange={handleBillingModeChange}
+                >
+                  <option value="one_time">Pago único</option>
+                  <option value="monthly">Mensual (póliza)</option>
+                  <option value="both">Ambos</option>
+                </select>
               </div>
             </div>
 

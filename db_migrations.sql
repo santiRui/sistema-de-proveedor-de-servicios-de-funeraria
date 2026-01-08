@@ -341,6 +341,12 @@ before update on public.orders
 for each row
 execute procedure public.set_timestamp();
 
+alter table public.services
+  add column if not exists billing_mode text not null default 'one_time';
+
+alter table public.quotations
+  add column if not exists requested_billing_mode text not null default 'one_time';
+
 -- =====================================
 -- 7. CONTRATOS
 -- =====================================

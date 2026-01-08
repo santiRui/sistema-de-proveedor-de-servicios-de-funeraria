@@ -45,6 +45,8 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
   const [familyMembers, setFamilyMembers] = useState<{ fullName: string; dni: string; age: string }[]>([])
   const [dniFrontFile, setDniFrontFile] = useState<File | null>(null)
   const [dniBackFile, setDniBackFile] = useState<File | null>(null)
+  const [serviceBillingMode, setServiceBillingMode] = useState<"one_time" | "monthly" | "both" | null>(null)
+  const [requestedBillingMode, setRequestedBillingMode] = useState<"one_time" | "monthly">("one_time")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [addressSuggestions, setAddressSuggestions] = useState<string[]>([])
@@ -101,7 +103,7 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
         if (serviceId) {
           const { data: service } = await supabase
             .from("services")
-            .select("max_members")
+            .select("max_members, billing_mode")
             .eq("id", Number(serviceId))
             .single()
 
@@ -110,8 +112,19 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
           } else {
             setMaxMembers(null)
           }
+
+          const bm = (service as any)?.billing_mode as string | null
+          if (bm === "monthly" || bm === "both" || bm === "one_time") {
+            setServiceBillingMode(bm)
+            setRequestedBillingMode(bm === "monthly" ? "monthly" : "one_time")
+          } else {
+            setServiceBillingMode(null)
+            setRequestedBillingMode("one_time")
+          }
         } else {
           setMaxMembers(null)
+          setServiceBillingMode(null)
+          setRequestedBillingMode("one_time")
         }
       } catch (e) {
         console.error("Error preloading client profile for quotation modal", e)
@@ -276,6 +289,8 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
         return
       }
 
+      const userId = user.id
+
       // 1. Subir imágenes de DNI (si existen)
       let dniFrontUrl: string | null = null
       let dniBackUrl: string | null = null
@@ -285,7 +300,7 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
       async function uploadIfPresent(file: File | null, side: "front" | "back") {
         if (!file) return null
         const ext = file.name.split(".").pop() || "jpg"
-        const path = `dni/${user.id}/${side}-${Date.now()}.${ext}`
+        const path = `dni/${userId}/${side}-${Date.now()}.${ext}`
         const { error: uploadError } = await bucket.upload(path, file, {
           cacheControl: "3600",
           upsert: false,
@@ -322,6 +337,7 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
         client_id: user.id,
         provider_id: providerId,
         service_id: serviceId ? Number(serviceId) : null,
+        requested_billing_mode: requestedBillingMode,
         requested_for: null,
         notes: finalNotes,
         status: "pending",
@@ -380,6 +396,7 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
               <label className="text-sm font-medium">Nombre completo</label>
               <Input name="fullName" value={formData.fullName} onChange={handleChange} required />
             </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Teléfono</label>
               <Input name="phone" value={formData.phone} onChange={handleChange} required />
@@ -388,16 +405,34 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
               <label className="text-sm font-medium">Correo electrónico</label>
               <Input name="email" type="email" value={formData.email} onChange={handleChange} required />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">DNI</label>
-              <Input name="dni" value={formData.dni} onChange={handleChange} required />
-            </div>
+
+            {serviceId && serviceBillingMode === "both" && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium mb-1">Tipo de contratación</label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                  value={requestedBillingMode}
+                  onChange={(e) => setRequestedBillingMode(e.target.value as any)}
+                >
+                  <option value="one_time">Uso único (pago único)</option>
+                  <option value="monthly">Póliza mensual</option>
+                </select>
+              </div>
+            )}
+
+            {serviceId && serviceBillingMode === "monthly" && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium mb-1">Tipo de contratación</label>
+                <div className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                  Póliza mensual
+                </div>
+              </div>
+            )}
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium">Dirección</label>
               <div className="relative">
                 <Input
                   name="address"
-                  placeholder="Calle, número, ciudad, provincia"
                   value={formData.address}
                   onChange={handleChange}
                   onFocus={() => {

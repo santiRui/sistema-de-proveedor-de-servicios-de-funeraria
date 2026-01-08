@@ -12,20 +12,10 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/auth?error=NotAuthenticated', request.url))
   }
 
-  // Solo proveedores (y empleados) deberían llegar acá, pero no bloqueamos por rol para evitar falsos negativos.
-  const { data: mpCreds, error: mpError } = await supabase
-    .from('provider_mp_credentials')
-    .select('mp_client_id, mp_client_secret')
-    .eq('provider_id', user.id)
-    .maybeSingle()
-
-  if (mpError) {
-    console.error('Error reading provider_mp_credentials', mpError)
-    return NextResponse.redirect(new URL('/provider/dashboard?error=MpCredentialsReadFailed', request.url))
-  }
-
-  if (!mpCreds?.mp_client_id || !mpCreds?.mp_client_secret) {
-    return NextResponse.redirect(new URL('/provider/dashboard?error=MpClientIdSecretMissing', request.url))
+  const marketplaceClientId = process.env.MERCADOPAGO_MARKETPLACE_CLIENT_ID
+  if (!marketplaceClientId) {
+    console.error('Missing MERCADOPAGO_MARKETPLACE_CLIENT_ID env var')
+    return NextResponse.redirect(new URL('/provider/dashboard?error=MissingMarketplaceClientId', request.url))
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
@@ -51,7 +41,7 @@ export async function GET(request: Request) {
   }
 
   const authUrl = new URL('https://auth.mercadopago.com.ar/authorization')
-  authUrl.searchParams.set('client_id', mpCreds.mp_client_id)
+  authUrl.searchParams.set('client_id', marketplaceClientId)
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('platform_id', 'mp')
   authUrl.searchParams.set('state', state)

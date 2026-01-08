@@ -367,71 +367,45 @@ export function MyQuotations() {
       return
     }
 
-    // 1) Crear orden pagada
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        client_id: user.id,
-        provider_id: quotation.providerId,
-        service_id: quotation.serviceId,
-        quotation_id: id,
-        status: "paid",
-        amount: quotation.proposedPrice,
-        platform_fee: 0,
-        scheduled_for: null,
-        paid_at: new Date().toISOString(),
-        payment_reference: "test-mode-payment",
+    try {
+      const res = await fetch('/api/mercadopago/checkout/one-time', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ quotationId: id }),
       })
-      .select("id")
-      .single()
 
-    if (orderError || !order) {
-      console.error("Error creating order from quotation", orderError)
+      const json = (await res.json().catch(() => null)) as any
+
+      if (!res.ok) {
+        toast({
+          title: 'No se pudo iniciar el pago',
+          description: json?.error || 'Intenta nuevamente en unos minutos.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      const initPoint = json?.init_point as string | undefined
+      if (!initPoint) {
+        toast({
+          title: 'No se pudo iniciar el pago',
+          description: 'Respuesta inválida del servidor.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      window.location.href = initPoint
+    } catch (e) {
+      console.error('Error starting Mercado Pago checkout', e)
       toast({
-        title: "No se pudo registrar el pago",
-        description: "Intenta nuevamente en unos minutos.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // 2) Crear contrato asociado a la orden
-    const contractNumber = `CT-${new Date().getFullYear()}-${order.id}`
-
-    const { error: contractError } = await supabase.from("contracts").insert({
-      order_id: order.id,
-      contract_number: contractNumber,
-      status: "active",
-      contract_text: null,
-    })
-
-    if (contractError) {
-      // En modo prueba no bloqueamos el flujo si falla la creación del contrato
-      console.warn("Error creating contract from order", contractError)
-    }
-
-    // 3) Actualizar estado de la cotización a aceptada y marcarla como retirada por el cliente
-    const { error: quotationError } = await supabase
-      .from("quotations")
-      .update({ status: "accepted", client_deleted_at: new Date().toISOString() })
-      .eq("id", id)
-
-    if (quotationError) {
-      console.error("Error updating quotation status after payment", quotationError)
-      toast({
-        title: "Contrato creado, pero hubo un problema actualizando la cotización",
-        description: "Revisa el estado en tus contratos.",
-        variant: "destructive",
+        title: 'No se pudo iniciar el pago',
+        description: 'Intenta nuevamente en unos minutos.',
+        variant: 'destructive',
       })
     }
-
-    setItems((prev) => prev.filter((q) => q.id !== id))
-    if (selected?.id === id) setSelected(null)
-
-    toast({
-      title: "Pago simulado",
-      description: "Se creó un contrato a partir de esta cotización (modo prueba).",
-    })
   }
 
   const statusClasses = (status: string) => {

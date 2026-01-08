@@ -27,6 +27,7 @@ export function ServiceManagement() {
     name: "",
     description: "",
     price: "",
+    billingMode: "one_time" as "one_time" | "monthly" | "both",
     areas: [] as string[],
     images: [] as string[],
     videos: [] as string[],
@@ -102,7 +103,9 @@ export function ServiceManagement() {
 
         const { data, error } = await supabase
           .from("services")
-          .select("id, name, description, base_price, service_areas, image_urls, video_urls, pdf_urls, max_members, is_public")
+          .select(
+            "id, name, description, base_price, billing_mode, service_areas, image_urls, video_urls, pdf_urls, max_members, is_public",
+          )
           .eq("provider_id", user.id)
           .eq("is_public", true)
 
@@ -116,6 +119,7 @@ export function ServiceManagement() {
           name: svc.name || "",
           description: svc.description || "",
           price: svc.base_price != null ? String(svc.base_price) : "",
+          billingMode: (svc.billing_mode as any) || "one_time",
           areas: (svc.service_areas as string[] | null) || serviceAreas,
           images: (svc.image_urls as string[] | null) || [],
           videos: (svc.video_urls as string[] | null) || [],
@@ -190,6 +194,13 @@ export function ServiceManagement() {
       ...formData,
       [e.target.name]: e.target.value,
     })
+  }
+
+  const handleBillingModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      billingMode: e.target.value as any,
+    }))
   }
 
   const handleFileUpload = async (
@@ -367,6 +378,7 @@ export function ServiceManagement() {
             name: formData.name,
             description: formData.description,
             base_price,
+            billing_mode: formData.billingMode,
             max_members,
             service_areas: formData.areas,
             image_urls: formData.images,
@@ -388,6 +400,7 @@ export function ServiceManagement() {
             name: formData.name,
             description: formData.description,
             price: formData.price,
+            billingMode: formData.billingMode,
             areas: formData.areas,
             images: formData.images,
             videos: formData.videos,
@@ -408,6 +421,7 @@ export function ServiceManagement() {
             name: formData.name,
             description: formData.description,
             base_price,
+            billing_mode: formData.billingMode,
             is_active: true,
             service_areas: formData.areas,
             image_urls: formData.images,
@@ -415,7 +429,9 @@ export function ServiceManagement() {
             pdf_urls: formData.pdfs,
             max_members,
           })
-          .select("id, name, description, base_price, service_areas, image_urls, video_urls, pdf_urls, max_members")
+          .select(
+            "id, name, description, base_price, billing_mode, service_areas, image_urls, video_urls, pdf_urls, max_members",
+          )
           .single()
 
         if (error) {
@@ -431,6 +447,7 @@ export function ServiceManagement() {
             name: data.name || formData.name,
             description: data.description || formData.description,
             price: data.base_price != null ? String(data.base_price) : formData.price,
+            billingMode: (data as any).billing_mode || formData.billingMode,
             areas: formData.areas,
             images: formData.images,
             videos: formData.videos,
@@ -456,6 +473,7 @@ export function ServiceManagement() {
       name: "",
       description: "",
       price: "",
+      billingMode: "one_time",
       areas: serviceAreas,
       images: [],
       videos: [],
@@ -477,6 +495,7 @@ export function ServiceManagement() {
                 name: "",
                 description: "",
                 price: "",
+                billingMode: "one_time",
                 areas: serviceAreas,
                 images: [],
                 videos: [],
@@ -543,6 +562,21 @@ export function ServiceManagement() {
                 <p className="text-xs text-gray-500">
                   Ejemplo: 1 = plan individual. 4 = plan familiar de hasta 4 personas en total (titular + beneficiarios).
                 </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-900">Modalidad de cobro</label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                  value={formData.billingMode}
+                  onChange={handleBillingModeChange}
+                >
+                  <option value="one_time">Pago único</option>
+                  <option value="monthly">Mensual (póliza)</option>
+                  <option value="both">Ambos</option>
+                </select>
               </div>
             </div>
 
@@ -753,6 +787,7 @@ export function ServiceManagement() {
                     name: "",
                     description: "",
                     price: "",
+                    billingMode: "one_time",
                     areas: serviceAreas,
                     images: [],
                     videos: [],
@@ -769,7 +804,7 @@ export function ServiceManagement() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {services.map((service) => (
+        {services.map((service: any) => (
           <Card key={service.id} className="p-6 border border-gray-200 hover:shadow-lg transition-shadow">
             <div className="flex justify-between items-start mb-4">
               <h3 className="font-bold text-lg text-gray-900">{service.name}</h3>
@@ -777,11 +812,13 @@ export function ServiceManagement() {
                 {role !== "provider_employee" && (
                   <>
                     <button
+                      type="button"
                       onClick={() => {
                         setFormData({
                           name: service.name,
                           description: service.description,
                           price: service.price,
+                          billingMode: (service.billingMode as any) || "one_time",
                           areas: service.areas,
                           images: service.images,
                           videos: service.videos,
@@ -796,6 +833,7 @@ export function ServiceManagement() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDeleteService(service.id)}
                       className="p-2 hover:bg-red-100 rounded-lg text-red-600"
                     >
@@ -816,7 +854,7 @@ export function ServiceManagement() {
                 <div className="space-y-1">
                   <p className="text-gray-700 font-medium">Imágenes:</p>
                   <div className="flex flex-wrap gap-2">
-                    {service.images.slice(0, 4).map((url, idx) => (
+                    {service.images.slice(0, 4).map((url: string, idx: number) => (
                       <a
                         key={idx}
                         href={url}
@@ -853,6 +891,7 @@ export function ServiceManagement() {
                 name: "",
                 description: "",
                 price: "",
+                billingMode: "one_time",
                 areas: serviceAreas,
                 images: [],
                 videos: [],
