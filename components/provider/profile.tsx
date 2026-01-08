@@ -30,6 +30,10 @@ export function ProviderProfile() {
     country: "Argentina",
     service_areas: [] as string[],
     cover_image_url: "",
+    mp_client_id: "",
+    mp_client_secret: "",
+    mp_user_id: null as number | null,
+    mp_connected_at: null as string | null,
     verificationStatus: false
   })
 
@@ -51,6 +55,10 @@ export function ProviderProfile() {
             country: data.country || "Argentina",
             service_areas: data.service_areas || [],
             cover_image_url: data.cover_image_url || "",
+            mp_client_id: (data as any).mp_client_id || "",
+            mp_client_secret: (data as any).mp_client_secret || "",
+            mp_user_id: (data as any).mp_user_id ?? null,
+            mp_connected_at: (data as any).mp_connected_at ?? null,
             verificationStatus: data.verified
           })
         }
@@ -202,6 +210,7 @@ export function ProviderProfile() {
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>
 
   const availableDepartments = formData.province ? (DEPARTMENTS_BY_PROVINCE[formData.province] || []) : []
+  const mpConnected = !!formData.mp_connected_at && !!formData.mp_user_id
 
   return (
     <div className="space-y-6">
@@ -279,6 +288,59 @@ export function ProviderProfile() {
               disabled={!isEditing}
               className="w-full min-h-[100px] px-3 py-2 border rounded-md disabled:opacity-50 disabled:bg-gray-50"
             />
+          </div>
+
+          {/* Mercado Pago */}
+          <div className="border-t pt-4 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-semibold">Mercado Pago (cobros)</p>
+                <p className="text-sm text-gray-500">
+                  Carga tu Client ID y Client Secret para conectar tu cuenta y recibir pagos.
+                </p>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${mpConnected ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                {mpConnected ? "Conectado" : "No conectado"}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>MP Client ID</Label>
+                <Input
+                  name="mp_client_id"
+                  value={formData.mp_client_id}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="Ej: 1234567890123456"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>MP Client Secret</Label>
+                <Input
+                  name="mp_client_secret"
+                  value={formData.mp_client_secret}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="Ej: APP_USR-..."
+                  type="password"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!formData.mp_client_id || !formData.mp_client_secret}
+                onClick={() => {
+                  window.location.href = "/api/mercadopago/oauth/start"
+                }}
+              >
+                Conectar Mercado Pago
+              </Button>
+            </div>
           </div>
 
           {/* Ubicación */}

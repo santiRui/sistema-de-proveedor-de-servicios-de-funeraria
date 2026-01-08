@@ -188,6 +188,42 @@ for each row
 execute procedure public.set_timestamp();
 
 -- =====================================
+-- 3B. CREDENCIALES MERCADO PAGO (Privadas)
+-- =====================================
+create table public.provider_mp_credentials (
+  provider_id uuid primary key references public.provider_profiles(id) on delete cascade,
+  mp_client_id text,
+  mp_client_secret text,
+  mp_access_token text,
+  mp_refresh_token text,
+  mp_user_id bigint,
+  mp_token_expires_at timestamptz,
+  mp_oauth_state text,
+  mp_connected_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.provider_mp_credentials enable row level security;
+
+create policy "Providers can view own MP credentials"
+  on public.provider_mp_credentials for select
+  using ( auth.uid() = provider_id );
+
+create policy "Providers can insert own MP credentials"
+  on public.provider_mp_credentials for insert
+  with check ( auth.uid() = provider_id );
+
+create policy "Providers can update own MP credentials"
+  on public.provider_mp_credentials for update
+  using ( auth.uid() = provider_id );
+
+create trigger set_timestamp_provider_mp_credentials
+before update on public.provider_mp_credentials
+for each row
+execute procedure public.set_timestamp();
+
+-- =====================================
 -- 4. SERVICIOS
 -- =====================================
 create table public.service_categories (
