@@ -172,6 +172,8 @@ export async function POST(request: Request) {
 
   const preapproval = (await mpRes.json().catch(() => null)) as any
 
+  console.log('[MP][subscription] Preapproval response', preapproval)
+
   const initPoint = preapproval?.init_point as string | undefined
   // Algunos entornos de Mercado Pago pueden devolver el identificador de la suscripción
   // como `id` o como `preapproval_id`. Tomamos cualquiera de los dos.
