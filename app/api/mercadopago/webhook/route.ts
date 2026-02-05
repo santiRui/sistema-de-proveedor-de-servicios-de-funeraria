@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   const paymentId = paymentIdRaw != null ? String(paymentIdRaw) : null
 
   // Aceptamos notificaciones tanto de pagos únicos como de suscripciones
-  const allowedTypes = new Set(['payment', 'authorized_payment'])
+  const allowedTypes = new Set(['payment', 'authorized_payment', 'subscription_preapproval'])
 
   if (!paymentId || (payload?.type && !allowedTypes.has(payload.type))) {
     return NextResponse.json({ received: true })
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true })
   }
 
-  await handlePaymentNotification({ providerId, orderId, paymentId })
+  await handlePaymentNotification({ providerId, orderId, paymentId, eventType: payload?.type })
   return NextResponse.json({ received: true })
 }
 
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   const providerId = url.searchParams.get('provider_id')
   const orderId = url.searchParams.get('order_id')
 
-  const allowedTopics = new Set(['payment', 'authorized_payment'])
+  const allowedTopics = new Set(['payment', 'authorized_payment', 'subscription_preapproval'])
 
   if (!paymentId || (topic && !allowedTopics.has(topic))) {
     return NextResponse.json({ received: true })
@@ -73,11 +73,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ received: true })
   }
 
-  await handlePaymentNotification({ providerId, orderId, paymentId })
+  await handlePaymentNotification({ providerId, orderId, paymentId, eventType: topic || undefined })
   return NextResponse.json({ received: true })
 }
 
-async function handlePaymentNotification(params: { providerId: string; orderId: string; paymentId: string }) {
+async function handlePaymentNotification(params: {
+  providerId: string
+  orderId: string
+  paymentId: string
+  eventType?: string | null
+}) {
   const admin = createAdminClient()
 
   const { data: mpCreds, error: mpError } = await admin
@@ -111,22 +116,31 @@ async function handlePaymentNotification(params: { providerId: string; orderId: 
     return
   }
 
-  let payment: PaymentResponse
-  try {
-    payment = await fetchPaymentDetail(accessToken, params.paymentId)
-  } catch (e) {
-    console.error('Webhook: failed fetching payment', e)
-    return
-  }
+  // Para pagos únicos / cargos de suscripción ya debitados consultamos el pago en MP.
+  // Para eventos de creación de suscripción (subscription_preapproval) usamos directamente el preapproval_id
+  // como referencia y asumimos estado aprobado.
+  let payment: PaymentResponse | null = null
 
-  const externalRef = payment.external_reference || null
-  if (externalRef && externalRef !== params.orderId) {
-    console.warn('Webhook: external_reference mismatch', { externalRef, orderId: params.orderId })
-    return
-  }
+  if (params.eventType === 'subscription_preapproval') {
+    // En este caso, params.paymentId es el preapproval_id de la suscripción
+    // MP ya confirmó la creación de la suscripción, por lo que podemos tratarlo como aprobado.
+  } else {
+    try {
+      payment = await fetchPaymentDetail(accessToken, params.paymentId)
+    } catch (e) {
+      console.error('Webhook: failed fetching payment', e)
+      return
+    }
 
-  if (payment.status !== 'approved') {
-    return
+    const externalRef = payment.external_reference || null
+    if (externalRef && externalRef !== params.orderId) {
+      console.warn('Webhook: external_reference mismatch', { externalRef, orderId: params.orderId })
+      return
+    }
+
+    if (payment.status !== 'approved') {
+      return
+    }
   }
 
   const { data: order, error: orderError } = await admin
@@ -140,7 +154,11 @@ async function handlePaymentNotification(params: { providerId: string; orderId: 
     return
   }
 
-  const paidAt = payment.date_approved ? new Date(payment.date_approved).toISOString() : new Date().toISOString()
+  // Para subscription_preapproval usamos la fecha actual; para pagos normales usamos date_approved si está disponible
+  const paidAt =
+    payment?.date_approved && params.eventType !== 'subscription_preapproval'
+      ? new Date(payment.date_approved).toISOString()
+      : new Date().toISOString()
   const paidDate = new Date(order.paid_at || paidAt)
 
   const { data: quotation } = await admin
@@ -185,7 +203,8 @@ async function handlePaymentNotification(params: { providerId: string; orderId: 
       .update({
         status: 'paid',
         paid_at: paidAt,
-        payment_reference: String(payment.id),
+        // Para suscripciones usamos el preapproval_id; para pagos normales usamos el id del pago
+        payment_reference: params.eventType === 'subscription_preapproval' ? params.paymentId : String(payment?.id),
         updated_at: new Date().toISOString(),
       })
       .eq('id', params.orderId)
@@ -334,7 +353,9 @@ async function handlePaymentNotification(params: { providerId: string; orderId: 
 
     await admin.from('payment_receipts').insert({
       order_id: params.orderId,
-      mp_payment_id: String(payment.id),
+      // Para suscripciones usamos el preapproval_id como referencia única del alta
+      mp_payment_id:
+        params.eventType === 'subscription_preapproval' ? params.paymentId : String(payment?.id),
       client_full_name: titularNombre || null,
       client_address: titularDomicilio || null,
       amount: Number((order as any).amount) || 0,
