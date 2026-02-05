@@ -140,6 +140,8 @@ export async function POST(request: Request) {
       transaction_amount: amount,
       currency_id: 'ARS',
     },
+    // Mercado Pago requiere el email del pagador para crear la suscripción
+    payer_email: user.email || undefined,
     back_url: `${baseUrl}/client/dashboard?subscription=return`,
     notification_url: notificationUrl,
   }
