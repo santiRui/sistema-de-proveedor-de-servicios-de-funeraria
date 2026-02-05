@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { decryptMpToken } from '@/lib/security/mpToken'
 
 type Body = {
@@ -183,10 +184,15 @@ export async function POST(request: Request) {
   if (!preapprovalId) {
     console.error('Mercado Pago preapproval response missing subscription identifier', preapproval)
   } else {
-    await supabase
+    const admin = createAdminClient()
+    const { error: subUpdateError } = await admin
       .from('orders')
       .update({ subscription_id: preapprovalId })
       .eq('id', order.id)
+
+    if (subUpdateError) {
+      console.error('Failed to persist subscription_id on order', { orderId: order.id, preapprovalId, subUpdateError })
+    }
   }
 
   if (!initPoint) {
