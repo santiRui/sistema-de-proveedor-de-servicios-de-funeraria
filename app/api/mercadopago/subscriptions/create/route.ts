@@ -173,9 +173,14 @@ export async function POST(request: Request) {
   const preapproval = (await mpRes.json().catch(() => null)) as any
 
   const initPoint = preapproval?.init_point as string | undefined
-  const preapprovalId = preapproval?.id as string | undefined
+  // Algunos entornos de Mercado Pago pueden devolver el identificador de la suscripción
+  // como `id` o como `preapproval_id`. Tomamos cualquiera de los dos.
+  const preapprovalId =
+    (preapproval?.preapproval_id as string | undefined) || (preapproval?.id as string | undefined)
 
-  if (preapprovalId) {
+  if (!preapprovalId) {
+    console.error('Mercado Pago preapproval response missing subscription identifier', preapproval)
+  } else {
     await supabase
       .from('orders')
       .update({ subscription_id: preapprovalId })
