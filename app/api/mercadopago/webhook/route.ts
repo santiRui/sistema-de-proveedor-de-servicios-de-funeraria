@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { decryptMpToken } from '@/lib/security/mpToken'
 
 type WebhookPayload = {
   type?: string
@@ -40,7 +41,10 @@ export async function POST(request: Request) {
   const paymentIdRaw = payload?.data?.id
   const paymentId = paymentIdRaw != null ? String(paymentIdRaw) : null
 
-  if (!paymentId || (payload?.type && payload.type !== 'payment')) {
+  // Aceptamos notificaciones tanto de pagos únicos como de suscripciones
+  const allowedTypes = new Set(['payment', 'authorized_payment'])
+
+  if (!paymentId || (payload?.type && !allowedTypes.has(payload.type))) {
     return NextResponse.json({ received: true })
   }
 
@@ -59,7 +63,9 @@ export async function GET(request: Request) {
   const providerId = url.searchParams.get('provider_id')
   const orderId = url.searchParams.get('order_id')
 
-  if (!paymentId || (topic && topic !== 'payment')) {
+  const allowedTopics = new Set(['payment', 'authorized_payment'])
+
+  if (!paymentId || (topic && !allowedTopics.has(topic))) {
     return NextResponse.json({ received: true })
   }
 
@@ -76,18 +82,38 @@ async function handlePaymentNotification(params: { providerId: string; orderId: 
 
   const { data: mpCreds, error: mpError } = await admin
     .from('provider_mp_credentials')
-    .select('mp_access_token')
+    .select('mp_access_token, mp_access_token_encrypted, mp_access_token_iv')
     .eq('provider_id', params.providerId)
     .maybeSingle()
 
-  if (mpError || !mpCreds?.mp_access_token) {
-    console.error('Webhook: missing provider mp_access_token', mpError)
+  if (mpError) {
+    console.error('Webhook: error reading provider_mp_credentials', mpError)
+    return
+  }
+
+  // Obtener access token de forma segura: priorizar cifrado, luego fallback legacy si existiera
+  let accessToken: string | null = null
+
+  try {
+    if (mpCreds?.mp_access_token_encrypted && mpCreds.mp_access_token_iv) {
+      accessToken = decryptMpToken(mpCreds.mp_access_token_encrypted, mpCreds.mp_access_token_iv)
+    } else if (mpCreds?.mp_access_token) {
+      // Compatibilidad con datos antiguos en texto plano (idealmente se migrarán)
+      accessToken = mpCreds.mp_access_token
+    }
+  } catch (e) {
+    console.error('Webhook: failed to decrypt provider Mercado Pago access token', e)
+    return
+  }
+
+  if (!accessToken) {
+    console.error('Webhook: missing provider mp_access_token (none decrypted or legacy)')
     return
   }
 
   let payment: PaymentResponse
   try {
-    payment = await fetchPaymentDetail(mpCreds.mp_access_token, params.paymentId)
+    payment = await fetchPaymentDetail(accessToken, params.paymentId)
   } catch (e) {
     console.error('Webhook: failed fetching payment', e)
     return
