@@ -48,6 +48,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true })
   }
 
+  // Para eventos de creación de suscripción (subscription_preapproval), Mercado Pago suele llamar
+  // a la URL global del webhook SIN parámetros de provider_id/order_id.
+  // En ese caso buscamos la orden a partir del subscription_id (preapproval_id).
+  if (payload?.type === 'subscription_preapproval') {
+    const admin = createAdminClient()
+
+    const { data: order, error: orderError } = await admin
+      .from('orders')
+      .select('id, provider_id')
+      .eq('subscription_id', paymentId)
+      .maybeSingle()
+
+    if (orderError || !order) {
+      console.error('Webhook: subscription_preapproval without matching order', { paymentId, orderError })
+      return NextResponse.json({ received: true })
+    }
+
+    await handlePaymentNotification({
+      providerId: order.provider_id as string,
+      orderId: order.id as string,
+      paymentId,
+      eventType: payload.type,
+    })
+
+    return NextResponse.json({ received: true })
+  }
+
   if (!providerId || !orderId) {
     return NextResponse.json({ received: true })
   }
