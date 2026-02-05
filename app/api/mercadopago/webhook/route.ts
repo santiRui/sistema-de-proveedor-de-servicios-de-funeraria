@@ -366,11 +366,26 @@ async function handlePaymentNotification(params: {
     const integrantesTextoRecibo = integrantesLineas.join('\n')
 
     const esMensual = (service as any)?.billing_mode === 'monthly'
-    const periodoMes = esMensual ? paidDate.getMonth() + 1 : null
-    const periodoAnio = esMensual ? paidDate.getFullYear() : null
 
-    const detallePrincipal = esMensual
-      ? `Pago de servicios sociales - Cuota correspondiente a ${paidDate.getMonth() + 1}/${paidDate.getFullYear()}`
+    // Para el alta de suscripción (subscription_preapproval) consideramos que la primera cuota
+    // corresponde al mes siguiente al alta. Para pagos normales usamos el mes del pago.
+    let periodoMes: number | null = null
+    let periodoAnio: number | null = null
+
+    if (esMensual) {
+      if (params.eventType === 'subscription_preapproval') {
+        const nextMonth = paidDate.getMonth() + 1 // 0-based
+        const nextYear = paidDate.getFullYear() + (nextMonth >= 12 ? 1 : 0)
+        periodoMes = ((nextMonth % 12) + 1) as number
+        periodoAnio = nextYear
+      } else {
+        periodoMes = paidDate.getMonth() + 1
+        periodoAnio = paidDate.getFullYear()
+      }
+    }
+
+    const detallePrincipal = esMensual && periodoMes && periodoAnio
+      ? `Pago de servicios sociales - Cuota correspondiente a ${periodoMes}/${periodoAnio}`
       : 'Pago por servicio contratado'
 
     const avisoVencimiento =

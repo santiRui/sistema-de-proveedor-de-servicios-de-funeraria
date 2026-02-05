@@ -23,6 +23,23 @@ export function MyContracts() {
   const [items, setItems] = useState<ClientContractItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<ClientContractItem | null>(null)
+  const [contractText, setContractText] = useState<string | null>(null)
+  const [contractNumber, setContractNumber] = useState<string | null>(null)
+  const [loadingContract, setLoadingContract] = useState(false)
+
+  const [receipts, setReceipts] = useState<
+    | {
+        receiptNumber: number
+        details: string | null
+        amount: number
+        issuedAt: string
+        periodMonth: number | null
+        periodYear: number | null
+      }[]
+    | null
+  >(null)
+  const [selectedReceiptIndex, setSelectedReceiptIndex] = useState<number | null>(null)
+  const [loadingReceipts, setLoadingReceipts] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterDate, setFilterDate] = useState("")
   const { toast } = useToast()
@@ -142,63 +159,147 @@ export function MyContracts() {
     return true
   })
 
-  const handlePayMonth = (contract: ClientContractItem) => {
-    const now = new Date()
-    const monthLabel = now.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+  const handleViewContract = async (contract: ClientContractItem) => {
+    setLoadingContract(true)
+    setContractText(null)
+    setContractNumber(null)
 
-    toast({
-      title: "Pago mensual simulado",
-      description: `Se registró el pago correspondiente a ${monthLabel} (modo prueba).`,
-    })
-  }
+    try {
+      const supabase = createClient()
 
-  const handleCancelPlan = async (contract: ClientContractItem) => {
-    const confirmed = window.confirm(
-      "¿Seguro que deseas dar de baja este plan? Dejarás de pagar y el contrato pasará a estado cancelado.",
-    )
-    if (!confirmed) return
-
-    const supabase = createClient()
-
-    // 1) Si existe contrato, lo marcamos como cancelado
-    if (contract.contractId) {
-      const { error: contractError } = await supabase
+      const { data, error } = await supabase
         .from("contracts")
-        .update({ status: "cancelled" })
-        .eq("id", contract.contractId)
+        .select("contract_text, contract_number")
+        .eq("order_id", contract.id)
+        .maybeSingle()
 
-      if (contractError) {
-        console.error("Error cancelling contract", contractError)
+      if (error) {
+        console.error("Error fetching contract text for client", error)
         toast({
-          title: "No se pudo dar de baja el plan",
+          title: "No se pudo cargar el contrato",
           description: "Intenta nuevamente en unos minutos.",
           variant: "destructive",
         })
         return
       }
+
+      if (!data?.contract_text) {
+        toast({
+          title: "Contrato no disponible",
+          description: "Todavía no hay un texto de contrato generado para esta orden.",
+        })
+        return
+      }
+
+      setContractText(data.contract_text as string)
+      setContractNumber((data.contract_number as string) || null)
+    } finally {
+      setLoadingContract(false)
     }
+  }
 
-    // 2) Siempre marcamos también la orden como cancelada para que no vuelva a aparecer
-    const { error: orderError } = await supabase
-      .from("orders")
-      .update({ status: "cancelled" })
-      .eq("id", contract.id)
-
-    if (orderError) {
-      console.error("Error cancelling order for plan", orderError)
+  const handlePrintContract = () => {
+    if (!contractText) {
       toast({
-        title: "No se pudo dar de baja el plan",
-        description: "Intenta nuevamente en unos minutos.",
-        variant: "destructive",
+        title: "Primero abre el contrato",
+        description: "Haz clic en 'Ver contrato' antes de imprimir.",
       })
       return
     }
 
-    setItems((prev) => prev.filter((c) => c.id !== contract.id))
-    toast({
-      title: "Plan dado de baja",
-      description: "El contrato fue cancelado y ya no generará nuevos pagos (modo prueba).",
-    })
+    const printWindow = window.open("", "_blank", "noopener,noreferrer")
+    if (!printWindow) return
+
+    const title = contractNumber ? `Contrato ${contractNumber}` : "Contrato"
+    printWindow.document.write(`<!doctype html><html><head><title>${title}</title></head><body>`)
+    printWindow.document.write(`<h1>${title}</h1>`)
+    printWindow.document.write(`<pre style="white-space:pre-wrap;font-family:inherit;">${
+      contractText.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }</pre>`)
+    printWindow.document.write("</body></html>")
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
+
+  const handleLoadReceipts = async (contract: ClientContractItem) => {
+    setLoadingReceipts(true)
+    setReceipts(null)
+    setSelectedReceiptIndex(null)
+
+    try {
+      const supabase = createClient()
+
+      const { data, error } = await supabase
+        .from("payment_receipts")
+        .select("receipt_number, details, amount, issued_at, period_month, period_year")
+        .eq("order_id", contract.id)
+        .order("issued_at", { ascending: false })
+
+      if (error) {
+        console.error("Error fetching payment receipts for client", error)
+        toast({
+          title: "No se pudieron cargar los comprobantes",
+          description: "Intenta nuevamente en unos minutos.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!data || data.length === 0) {
+        toast({
+          title: "Sin comprobantes",
+          description: "Todavía no hay comprobantes de pago para este plan.",
+        })
+        return
+      }
+
+      const mapped = data.map((r: any) => ({
+        receiptNumber: r.receipt_number as number,
+        details: (r.details as string) ?? null,
+        amount: Number(r.amount || 0),
+        issuedAt: r.issued_at as string,
+        periodMonth: (r.period_month as number | null) ?? null,
+        periodYear: (r.period_year as number | null) ?? null,
+      }))
+
+      setReceipts(mapped)
+      setSelectedReceiptIndex(0)
+    } finally {
+      setLoadingReceipts(false)
+    }
+  }
+
+  const handlePrintReceipt = () => {
+    if (!receipts || selectedReceiptIndex === null) {
+      toast({
+        title: "Primero elige un comprobante",
+        description: "Carga y selecciona el comprobante que deseas imprimir.",
+      })
+      return
+    }
+
+    const receipt = receipts[selectedReceiptIndex]
+    const printWindow = window.open("", "_blank", "noopener,noreferrer")
+    if (!printWindow) return
+
+    const fecha = new Date(receipt.issuedAt).toLocaleString("es-AR")
+    const encabezado = `Recibo N° ${receipt.receiptNumber} - Fecha de emisión: ${fecha}`
+
+    printWindow.document.write("<!doctype html><html><head><title>Comprobante de pago</title></head><body>")
+    printWindow.document.write(`<h1>${encabezado}</h1>`)
+    printWindow.document.write(`<p><strong>Importe pagado:</strong> $${receipt.amount.toFixed(2)}</p>`)
+    if (receipt.details) {
+      printWindow.document.write(
+        `<pre style="white-space:pre-wrap;font-family:inherit;">${receipt.details
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</pre>`,
+      )
+    }
+    printWindow.document.write("</body></html>")
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
   }
 
   return (
@@ -272,26 +373,16 @@ export function MyContracts() {
                 <Button
                   variant="outline"
                   className="flex-1 gap-2 bg-transparent"
-                  onClick={() => handlePayMonth(contract)}
+                  onClick={() => {
+                    setSelected(contract)
+                    setContractText(null)
+                    setContractNumber(null)
+                    setReceipts(null)
+                    setSelectedReceiptIndex(null)
+                  }}
                 >
                   <FileText className="w-4 h-4" />
-                  Pagar mes de {new Date().toLocaleDateString("es-AR", { month: "short" })}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-2 border-red-200 text-red-600 hover:bg-red-50"
-                  onClick={() => handleCancelPlan(contract)}
-                >
-                  <User className="w-4 h-4" />
-                  Dar de baja plan
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => setSelected(contract)}
-                >
-                  Ver detalle
+                  Ver contrato y comprobantes
                 </Button>
               </div>
             </Card>
@@ -340,10 +431,70 @@ export function MyContracts() {
               </div>
             )}
 
-            <div className="pt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setSelected(null)}>
-                Cerrar
-              </Button>
+            <div className="pt-4 space-y-4 border-t mt-2">
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">Contrato</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loadingContract}
+                    onClick={() => handleViewContract(selected)}
+                  >
+                    {loadingContract ? "Cargando contrato..." : "Ver contrato"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handlePrintContract}>
+                    Imprimir contrato
+                  </Button>
+                </div>
+                {contractText && (
+                  <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-64 overflow-auto">
+                    {contractText}
+                  </pre>
+                )}
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <p className="font-medium">Comprobantes de pago</p>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loadingReceipts}
+                    onClick={() => handleLoadReceipts(selected)}
+                  >
+                    {loadingReceipts ? "Cargando comprobantes..." : "Cargar comprobantes"}
+                  </Button>
+                  {receipts && receipts.length > 0 && (
+                    <select
+                      className="border rounded-md px-2 py-1 text-xs"
+                      value={selectedReceiptIndex ?? 0}
+                      onChange={(e) => setSelectedReceiptIndex(Number(e.target.value))}
+                    >
+                      {receipts.map((r, idx) => {
+                        const labelPeriodo =
+                          r.periodMonth && r.periodYear
+                            ? `${String(r.periodMonth).padStart(2, "0")}/${r.periodYear}`
+                            : new Date(r.issuedAt).toLocaleDateString("es-AR")
+                        return (
+                          <option key={r.receiptNumber} value={idx}>
+                            Recibo {r.receiptNumber} - {labelPeriodo}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  )}
+                  <Button variant="outline" size="sm" onClick={handlePrintReceipt}>
+                    Imprimir comprobante
+                  </Button>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setSelected(null)}>
+                  Cerrar
+                </Button>
+              </div>
             </div>
           </Card>
         </div>
