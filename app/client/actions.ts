@@ -13,6 +13,7 @@ export async function updateProfile(formData: FormData) {
   }
 
   const full_name = formData.get('full_name') as string
+  const billing_email = formData.get('billing_email') as string
   const phone = formData.get('phone') as string
   const dni = formData.get('dni') as string
   const birth_date = formData.get('birth_date') as string
@@ -25,6 +26,7 @@ export async function updateProfile(formData: FormData) {
     .from('profiles')
     .update({
       full_name,
+      billing_email: billing_email || null,
       phone,
       dni,
       birth_date: birth_date || null,

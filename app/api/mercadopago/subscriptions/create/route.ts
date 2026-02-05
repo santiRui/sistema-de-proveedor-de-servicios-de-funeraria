@@ -24,6 +24,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'quotationId es requerido' }, { status: 400 })
   }
 
+  // Cargar email de facturación del perfil del cliente (si existe)
+  const { data: clientProfile } = await supabase
+    .from('profiles')
+    .select('billing_email')
+    .eq('id', user.id)
+    .maybeSingle()
+
   const { data: quotation, error: quotationError } = await supabase
     .from('quotations')
     .select('id, client_id, provider_id, service_id, status, proposed_price')
@@ -131,6 +138,8 @@ export async function POST(request: Request) {
     quotation.provider_id,
   )}&order_id=${encodeURIComponent(order.id)}`
 
+  const payerEmail = (clientProfile as any)?.billing_email || user.email || undefined
+
   const preapprovalBody: any = {
     reason: service.name || 'Suscripción mensual de servicio',
     external_reference: String(order.id),
@@ -141,7 +150,7 @@ export async function POST(request: Request) {
       currency_id: 'ARS',
     },
     // Mercado Pago requiere el email del pagador para crear la suscripción
-    payer_email: user.email || undefined,
+    payer_email: payerEmail,
     back_url: `${baseUrl}/client/dashboard?subscription=return`,
     notification_url: notificationUrl,
   }

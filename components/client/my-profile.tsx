@@ -18,6 +18,7 @@ export function MyProfile() {
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
+    billing_email: "",
     phone: "",
     dni: "",
     birth_date: "",
@@ -35,6 +36,7 @@ export function MyProfile() {
           setFormData({
             full_name: profile.full_name || "",
             email: "", 
+            billing_email: (profile as any).billing_email || "",
             phone: profile.phone || "",
             dni: profile.dni || "",
             birth_date: profile.birth_date || "",
@@ -121,6 +123,19 @@ export function MyProfile() {
                 name="full_name" 
                 value={formData.full_name} 
                 onChange={handleChange} 
+                disabled={!isEditing}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="billing_email">Email de facturación (Mercado Pago)</Label>
+              <Input
+                id="billing_email"
+                name="billing_email"
+                type="email"
+                placeholder="Correo de la cuenta de Mercado Pago"
+                value={formData.billing_email}
+                onChange={handleChange}
                 disabled={!isEditing}
               />
             </div>
