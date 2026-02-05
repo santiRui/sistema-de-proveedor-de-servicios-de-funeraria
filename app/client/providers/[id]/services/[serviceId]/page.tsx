@@ -199,7 +199,11 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
           )}
 
           <div className="pt-4 flex justify-start">
-            <PlanQuotationButton providerId={providerId} />
+            <PlanQuotationButton
+              providerId={providerId}
+              serviceId={String(service.id)}
+              serviceName={service.name}
+            />
           </div>
         </Card>
       </main>

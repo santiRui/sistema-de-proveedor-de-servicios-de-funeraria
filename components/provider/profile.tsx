@@ -17,7 +17,7 @@ export function ProviderProfile() {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [expandedProvince, setExpandedProvince] = useState<string | null>(null)
   const [isUploadingCover, setIsUploadingCover] = useState(false)
-  const [showMpClientSecret, setShowMpClientSecret] = useState(false)
+  const [showMpAccessToken, setShowMpAccessToken] = useState(false)
 
   const [formData, setFormData] = useState({
     business_name: "",
@@ -33,6 +33,8 @@ export function ProviderProfile() {
     cover_image_url: "",
     mp_user_id: null as number | null,
     mp_connected_at: null as string | null,
+    mp_access_token: "",
+    mp_public_key: "",
     verificationStatus: false
   })
 
@@ -56,6 +58,8 @@ export function ProviderProfile() {
             cover_image_url: data.cover_image_url || "",
             mp_user_id: (data as any).mp_user_id ?? null,
             mp_connected_at: (data as any).mp_connected_at ?? null,
+            mp_access_token: (data as any).mp_access_token || "",
+            mp_public_key: (data as any).mp_public_key || "",
             verificationStatus: data.verified
           })
         }
@@ -207,7 +211,7 @@ export function ProviderProfile() {
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>
 
   const availableDepartments = formData.province ? (DEPARTMENTS_BY_PROVINCE[formData.province] || []) : []
-  const mpConnected = !!formData.mp_connected_at && !!formData.mp_user_id
+  const mpConnected = !!formData.mp_access_token
 
   return (
     <div className="space-y-6">
@@ -293,24 +297,52 @@ export function ProviderProfile() {
               <div>
                 <p className="font-semibold">Mercado Pago (cobros)</p>
                 <p className="text-sm text-gray-500">
-                  Conecta tu cuenta para recibir pagos. La comisión de la plataforma se cobrará automáticamente.
+                  Configura tu Access Token de Mercado Pago para poder recibir pagos a tu cuenta.
                 </p>
               </div>
               <div className={`px-3 py-1 rounded-full text-xs font-medium ${mpConnected ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                {mpConnected ? "Conectado" : "No conectado"}
+                {mpConnected ? "Credenciales configuradas" : "Sin credenciales"}
               </div>
             </div>
 
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  window.location.href = "/api/mercadopago/oauth/start"
-                }}
-              >
-                Conectar Mercado Pago
-              </Button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+              <div className="space-y-2">
+                <Label>Access Token (Mercado Pago)</Label>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    name="mp_access_token"
+                    type={showMpAccessToken ? "text" : "password"}
+                    value={formData.mp_access_token}
+                    onChange={handleChange}
+                    disabled={!isEditing}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowMpAccessToken((prev) => !prev)}
+                  >
+                    {showMpAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Copia aquí el Access Token de tu cuenta de Mercado Pago. Se utilizará para crear pagos y suscripciones.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Public Key (Mercado Pago)</Label>
+                <Input
+                  name="mp_public_key"
+                  value={formData.mp_public_key}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                />
+                <p className="text-xs text-gray-500">
+                  Clave pública de tu aplicación de Mercado Pago. Se usará en integraciones de frontend cuando sea necesario.
+                </p>
+              </div>
             </div>
           </div>
 

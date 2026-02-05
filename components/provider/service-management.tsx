@@ -119,7 +119,7 @@ export function ServiceManagement() {
           name: svc.name || "",
           description: svc.description || "",
           price: svc.base_price != null ? String(svc.base_price) : "",
-          billingMode: (svc.billing_mode as any) || "one_time",
+          billingMode: (svc.billing_mode === "monthly" ? "monthly" : "one_time"),
           areas: (svc.service_areas as string[] | null) || serviceAreas,
           images: (svc.image_urls as string[] | null) || [],
           videos: (svc.video_urls as string[] | null) || [],
@@ -447,7 +447,7 @@ export function ServiceManagement() {
             name: data.name || formData.name,
             description: data.description || formData.description,
             price: data.base_price != null ? String(data.base_price) : formData.price,
-            billingMode: (data as any).billing_mode || formData.billingMode,
+            billingMode: ((data as any).billing_mode === "monthly" ? "monthly" : "one_time"),
             areas: formData.areas,
             images: formData.images,
             videos: formData.videos,
@@ -575,7 +575,6 @@ export function ServiceManagement() {
                 >
                   <option value="one_time">Pago único</option>
                   <option value="monthly">Mensual (póliza)</option>
-                  <option value="both">Ambos</option>
                 </select>
               </div>
             </div>

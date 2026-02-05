@@ -378,6 +378,43 @@ for each row
 execute procedure public.set_timestamp();
 
 -- =====================================
+-- 7. RECIBOS DE PAGO
+-- =====================================
+create table public.payment_receipts (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references public.orders(id) on delete cascade,
+  mp_payment_id text not null,
+  receipt_number bigint generated always as identity,
+  client_full_name text not null,
+  client_address text,
+  amount numeric(12,2) not null,
+  issued_at timestamptz not null default now(),
+  period_month int,
+  period_year int,
+  details text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (mp_payment_id)
+);
+alter table public.payment_receipts enable row level security;
+
+-- Visible a través de la orden (cliente o proveedor)
+create policy "Users can view own payment receipts" 
+  on public.payment_receipts for select 
+  using ( 
+    exists (
+      select 1 from public.orders 
+      where orders.id = payment_receipts.order_id 
+      and (orders.client_id = auth.uid() or orders.provider_id = auth.uid())
+    )
+  );
+
+create trigger set_timestamp_payment_receipts
+before update on public.payment_receipts
+for each row
+execute procedure public.set_timestamp();
+
+-- =====================================
 -- 8. LOGS (Solo Admin)
 -- =====================================
 create table public.transaction_logs (

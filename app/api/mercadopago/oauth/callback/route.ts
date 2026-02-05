@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { encryptMpToken } from '@/lib/security/mpToken'
 
 type TokenResponse = {
   access_token: string
@@ -90,10 +91,22 @@ export async function GET(request: Request) {
     ? new Date(Date.now() + tokenJson.expires_in * 1000).toISOString()
     : null
 
+  // Cifrar el access token antes de guardarlo en la base de datos
+  let encryptedToken: { encrypted: string; iv: string } | null = null
+  try {
+    encryptedToken = encryptMpToken(tokenJson.access_token)
+  } catch (e) {
+    console.error('Failed to encrypt Mercado Pago access token', e)
+    return NextResponse.redirect(new URL('/provider/dashboard?error=MpTokenEncryptFailed', request.url))
+  }
+
   const { error: saveError } = await supabase
     .from('provider_mp_credentials')
     .update({
-      mp_access_token: tokenJson.access_token,
+      // Guardamos solo la versión cifrada; el campo en texto plano se deja en null
+      mp_access_token: null,
+      mp_access_token_encrypted: encryptedToken.encrypted,
+      mp_access_token_iv: encryptedToken.iv,
       mp_refresh_token: tokenJson.refresh_token || null,
       mp_user_id: tokenJson.user_id ?? null,
       mp_token_expires_at: expiresAt,

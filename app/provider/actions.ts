@@ -24,6 +24,8 @@ export async function updateProviderProfile(formData: FormData) {
   const address = formData.get('address') as string
   const service_areas_json = formData.get('service_areas') as string
   const cover_image_url = formData.get('cover_image_url') as string
+  const mp_access_token = (formData.get('mp_access_token') as string | null) || null
+  const mp_public_key = (formData.get('mp_public_key') as string | null) || null
   
   let service_areas: string[] = []
   try {
@@ -67,6 +69,8 @@ export async function updateProviderProfile(formData: FormData) {
   // 3. Asegurar registro para OAuth Marketplace (tabla privada)
   const { error: mpError } = await supabase.from('provider_mp_credentials').upsert({
     provider_id: user.id,
+    mp_access_token,
+    mp_public_key,
     updated_at: new Date().toISOString(),
   })
 
@@ -109,7 +113,7 @@ export async function getProviderProfile() {
 
   const { data: mpData, error: mpError } = await supabase
     .from('provider_mp_credentials')
-    .select('mp_user_id, mp_connected_at')
+    .select('mp_user_id, mp_connected_at, mp_access_token, mp_public_key')
     .eq('provider_id', user.id)
     .maybeSingle()
 
@@ -137,5 +141,7 @@ export async function getProviderProfile() {
     cover_image_url: providerData?.cover_image_url,
     mp_user_id: (mpData as any)?.mp_user_id,
     mp_connected_at: (mpData as any)?.mp_connected_at,
+    mp_access_token: (mpData as any)?.mp_access_token || null,
+    mp_public_key: (mpData as any)?.mp_public_key || null,
   }
 }

@@ -89,7 +89,7 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
           name: data.name || "",
           description: data.description || "",
           price: data.base_price != null ? String(data.base_price) : "",
-          billingMode: ((data as any).billing_mode as any) || "one_time",
+          billingMode: ((data as any).billing_mode === "monthly" ? "monthly" : "one_time"),
           areas: (data.service_areas as string[] | null) || profile?.service_areas || [],
           images: (data.image_urls as string[] | null) || [],
           videos: (data.video_urls as string[] | null) || [],
@@ -315,7 +315,6 @@ export function ServiceEdit({ serviceId }: ServiceEditProps) {
                 >
                   <option value="one_time">Pago único</option>
                   <option value="monthly">Mensual (póliza)</option>
-                  <option value="both">Ambos</option>
                 </select>
               </div>
             </div>

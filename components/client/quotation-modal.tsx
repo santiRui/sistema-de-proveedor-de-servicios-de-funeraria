@@ -45,8 +45,7 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
   const [familyMembers, setFamilyMembers] = useState<{ fullName: string; dni: string; age: string }[]>([])
   const [dniFrontFile, setDniFrontFile] = useState<File | null>(null)
   const [dniBackFile, setDniBackFile] = useState<File | null>(null)
-  const [serviceBillingMode, setServiceBillingMode] = useState<"one_time" | "monthly" | "both" | null>(null)
-  const [requestedBillingMode, setRequestedBillingMode] = useState<"one_time" | "monthly">("one_time")
+  const [serviceBillingMode, setServiceBillingMode] = useState<"one_time" | "monthly" | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [addressSuggestions, setAddressSuggestions] = useState<string[]>([])
@@ -72,7 +71,13 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
           .eq("id", user.id)
           .single()
 
-        const fullName = profile?.full_name || ""
+        const accountName =
+          ((user.user_metadata as any)?.full_name as string | undefined) ||
+          ((user.user_metadata as any)?.name as string | undefined) ||
+          ((user.user_metadata as any)?.display_name as string | undefined) ||
+          ""
+
+        const fullName = profile?.full_name || accountName
         const phone = profile?.phone || ""
         const dni = profile?.dni || ""
         const addressParts = [profile?.city, profile?.province].filter(Boolean)
@@ -112,19 +117,16 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
           } else {
             setMaxMembers(null)
           }
-
           const bm = (service as any)?.billing_mode as string | null
-          if (bm === "monthly" || bm === "both" || bm === "one_time") {
+          if (bm === "monthly" || bm === "one_time") {
             setServiceBillingMode(bm)
-            setRequestedBillingMode(bm === "monthly" ? "monthly" : "one_time")
           } else {
-            setServiceBillingMode(null)
-            setRequestedBillingMode("one_time")
+            // Cualquier valor desconocido lo tratamos como pago único para no bloquear al usuario
+            setServiceBillingMode("one_time")
           }
         } else {
           setMaxMembers(null)
           setServiceBillingMode(null)
-          setRequestedBillingMode("one_time")
         }
       } catch (e) {
         console.error("Error preloading client profile for quotation modal", e)
@@ -133,6 +135,25 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
 
     preloadClientData()
   }, [isOpen])
+
+  // Actualizar cantidad de personas y formularios extra respetando el máximo del plan
+  useEffect(() => {
+    let count = Math.max(1, Number(formData.peopleCount || "1"))
+    if (maxMembers && count > maxMembers) {
+      count = maxMembers
+      setFormData((prev) => ({ ...prev, peopleCount: String(maxMembers) }))
+    }
+    const extras = Math.max(0, count - 1)
+
+    setFamilyMembers((prev) => {
+      const copy = [...prev]
+      if (copy.length > extras) return copy.slice(0, extras)
+      while (copy.length < extras) {
+        copy.push({ fullName: "", dni: "", age: "" })
+      }
+      return copy
+    })
+  }, [formData.peopleCount, maxMembers])
 
   if (!isOpen) return null
 
@@ -191,25 +212,6 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
       setShowAddressSuggestions(filtered.length > 0)
     }
   }
-
-  // Actualizar cantidad de personas y formularios extra respetando el máximo del plan
-  useEffect(() => {
-    let count = Math.max(1, Number(formData.peopleCount || "1"))
-    if (maxMembers && count > maxMembers) {
-      count = maxMembers
-      setFormData((prev) => ({ ...prev, peopleCount: String(maxMembers) }))
-    }
-    const extras = Math.max(0, count - 1)
-
-    setFamilyMembers((prev) => {
-      const copy = [...prev]
-      if (copy.length > extras) return copy.slice(0, extras)
-      while (copy.length < extras) {
-        copy.push({ fullName: "", dni: "", age: "" })
-      }
-      return copy
-    })
-  }, [formData.peopleCount, maxMembers])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -337,7 +339,7 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
         client_id: user.id,
         provider_id: providerId,
         service_id: serviceId ? Number(serviceId) : null,
-        requested_billing_mode: requestedBillingMode,
+        requested_billing_mode: serviceBillingMode || "one_time",
         requested_for: null,
         notes: finalNotes,
         status: "pending",
@@ -406,25 +408,20 @@ export function QuotationModal({ providerId, serviceId, serviceName, isOpen, onC
               <Input name="email" type="email" value={formData.email} onChange={handleChange} required />
             </div>
 
-            {serviceId && serviceBillingMode === "both" && (
-              <div className="space-y-2">
-                <label className="block text-sm font-medium mb-1">Tipo de contratación</label>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                  value={requestedBillingMode}
-                  onChange={(e) => setRequestedBillingMode(e.target.value as any)}
-                >
-                  <option value="one_time">Uso único (pago único)</option>
-                  <option value="monthly">Póliza mensual</option>
-                </select>
-              </div>
-            )}
-
             {serviceId && serviceBillingMode === "monthly" && (
               <div className="space-y-2">
                 <label className="block text-sm font-medium mb-1">Tipo de contratación</label>
                 <div className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-700">
-                  Póliza mensual
+                  Póliza mensual (suscripción)
+                </div>
+              </div>
+            )}
+
+            {serviceId && serviceBillingMode === "one_time" && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium mb-1">Tipo de contratación</label>
+                <div className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                  Uso único (pago único)
                 </div>
               </div>
             )}

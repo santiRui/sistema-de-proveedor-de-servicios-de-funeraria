@@ -41,6 +41,7 @@ interface QuotationItem {
   clientAddress: string | null
   clientAge: number | null
   familyMembers: { full_name: string | null; dni: string | null; age: number | null }[]
+  serviceBillingMode?: 'one_time' | 'monthly' | null
 }
 
 export function MyQuotations() {
@@ -97,7 +98,7 @@ export function MyQuotations() {
         ? await supabase
             .from("services")
             .select(
-              "id, name, description, base_price, max_members, service_areas, image_urls, video_urls, pdf_urls",
+              "id, name, description, base_price, max_members, service_areas, image_urls, video_urls, pdf_urls, billing_mode",
             )
             .in("id", serviceIds)
         : { data: [] as any[] }
@@ -161,6 +162,12 @@ export function MyQuotations() {
             clientAddress: (q.client_address as string) || null,
             clientAge: (q.client_age as number | null) ?? null,
             familyMembers: (q.family_members as any[] | null) || [],
+            serviceBillingMode:
+              (service?.billing_mode === 'monthly'
+                ? 'monthly'
+                : service?.billing_mode === 'one_time'
+                ? 'one_time'
+                : null),
           }
         })
 
@@ -301,12 +308,27 @@ export function MyQuotations() {
     if (!confirmed) return
 
     const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      toast({
+        title: "Sesión requerida",
+        description: "Debes iniciar sesión para gestionar tus cotizaciones.",
+        variant: "destructive",
+      })
+      return
+    }
+
     const { error } = await supabase
       .from("quotations")
-      .update({ status: "rejected", rejected_by: "client" })
+      .delete()
       .eq("id", id)
+      .eq("client_id", user.id)
+
     if (error) {
-      console.error("Error rejecting quotation", error)
+      console.error("Error deleting quotation on reject", error)
       toast({
         title: "No se pudo rechazar la cotización",
         description: "Intenta nuevamente en unos minutos.",
@@ -315,18 +337,20 @@ export function MyQuotations() {
       return
     }
 
-    setItems((prev) => prev.map((q) => (q.id === id ? { ...q, status: "rejected" } : q)))
-    if (selected?.id === id) setSelected((prev) => (prev ? { ...prev, status: "rejected" } : prev))
+    setItems((prev) => prev.filter((q) => q.id !== id))
+    if (selected?.id === id) setSelected(null)
 
     toast({
-      title: "Cotización rechazada",
-      description: "Has rechazado la propuesta del proveedor.",
+      title: "Cotización eliminada",
+      description: "La cotización rechazada fue eliminada de tu historial.",
     })
   }
 
   const handlePayQuotation = async (id: number) => {
+    console.log('[MyQuotations] handlePayQuotation llamado', { quotationId: id })
     const quotation = items.find((q) => q.id === id)
     if (!quotation) {
+      console.warn('[MyQuotations] Cotización no encontrada en items', { quotationId: id })
       toast({
         title: "Cotización no encontrada",
         description: "No se pudo localizar la cotización seleccionada.",
@@ -335,16 +359,8 @@ export function MyQuotations() {
       return
     }
 
-    if (quotation.proposedPrice == null || Number.isNaN(quotation.proposedPrice)) {
-      toast({
-        title: "Falta la propuesta del proveedor",
-        description: "El proveedor aún no definió un importe para esta cotización.",
-        variant: "destructive",
-      })
-      return
-    }
-
     if (!quotation.serviceId) {
+      console.warn('[MyQuotations] Cotización sin serviceId, no se puede pagar', { quotationId: id, quotation })
       toast({
         title: "Cotización sin plan asociado",
         description: "Esta cotización no está vinculada a un plan específico, por lo que no puede generar un contrato.",
@@ -367,8 +383,12 @@ export function MyQuotations() {
       return
     }
 
+    const isMonthly = quotation.serviceBillingMode === 'monthly'
+    const endpoint = isMonthly ? '/api/mercadopago/subscriptions/create' : '/api/mercadopago/checkout/one-time'
+
     try {
-      const res = await fetch('/api/mercadopago/checkout/one-time', {
+      console.log('[MyQuotations] Llamando endpoint de pago', { endpoint, quotationId: id })
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -378,9 +398,16 @@ export function MyQuotations() {
 
       const json = (await res.json().catch(() => null)) as any
 
+       console.log('[MyQuotations] Respuesta de pago recibida', {
+        endpoint,
+        status: res.status,
+        ok: res.ok,
+        body: json,
+       })
+
       if (!res.ok) {
         toast({
-          title: 'No se pudo iniciar el pago',
+          title: isMonthly ? 'No se pudo iniciar la suscripción' : 'No se pudo iniciar el pago',
           description: json?.error || 'Intenta nuevamente en unos minutos.',
           variant: 'destructive',
         })
@@ -390,18 +417,19 @@ export function MyQuotations() {
       const initPoint = json?.init_point as string | undefined
       if (!initPoint) {
         toast({
-          title: 'No se pudo iniciar el pago',
+          title: isMonthly ? 'No se pudo iniciar la suscripción' : 'No se pudo iniciar el pago',
           description: 'Respuesta inválida del servidor.',
           variant: 'destructive',
         })
         return
       }
 
+      console.log('[MyQuotations] Redirigiendo a Mercado Pago', { initPoint })
       window.location.href = initPoint
     } catch (e) {
       console.error('Error starting Mercado Pago checkout', e)
       toast({
-        title: 'No se pudo iniciar el pago',
+        title: isMonthly ? 'No se pudo iniciar la suscripción' : 'No se pudo iniciar el pago',
         description: 'Intenta nuevamente en unos minutos.',
         variant: 'destructive',
       })
@@ -507,7 +535,10 @@ export function MyQuotations() {
                         <Button
                           size="sm"
                           className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                          onClick={() => handlePayQuotation(q.id)}
+                          onClick={() => {
+                            console.log('[MyQuotations] Botón "Abonar cotización" clickeado', { quotationId: q.id })
+                            handlePayQuotation(q.id)
+                          }}
                         >
                           Abonar cotización
                         </Button>

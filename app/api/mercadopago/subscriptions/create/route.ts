@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     .single()
 
   if (quotationError || !quotation) {
-    console.error('Error fetching quotation for checkout', quotationError)
+    console.error('Error fetching quotation for subscription', quotationError)
     return NextResponse.json({ error: 'No se pudo cargar la cotización' }, { status: 500 })
   }
 
@@ -40,21 +40,32 @@ export async function POST(request: Request) {
   }
 
   if (quotation.status !== 'accepted') {
-    return NextResponse.json({ error: 'La cotización debe estar aceptada para pagar' }, { status: 400 })
+    return NextResponse.json({ error: 'La cotización debe estar aceptada para crear una suscripción' }, { status: 400 })
+  }
+
+  if (!quotation.service_id) {
+    return NextResponse.json({ error: 'La cotización no tiene un servicio asociado' }, { status: 400 })
+  }
+
+  const { data: service, error: serviceError } = await supabase
+    .from('services')
+    .select('name, billing_mode')
+    .eq('id', quotation.service_id)
+    .maybeSingle()
+
+  if (serviceError || !service) {
+    console.error('Error fetching service for subscription', serviceError)
+    return NextResponse.json({ error: 'No se pudo cargar el servicio asociado a la cotización' }, { status: 500 })
+  }
+
+  if (service.billing_mode !== 'monthly') {
+    return NextResponse.json({ error: 'Este servicio no está configurado como mensualidad' }, { status: 400 })
   }
 
   const amount = quotation.proposed_price != null ? Number(quotation.proposed_price) : NaN
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: 'La cotización no tiene un importe válido' }, { status: 400 })
   }
-
-  const platformFee = Math.round(amount * 0.1 * 100) / 100
-
-  const { data: service } = await supabase
-    .from('services')
-    .select('name, billing_mode')
-    .eq('id', quotation.service_id)
-    .maybeSingle()
 
   const { data: mpCredsRow, error: mpError } = await supabase
     .from('provider_mp_credentials')
@@ -63,8 +74,8 @@ export async function POST(request: Request) {
     .maybeSingle()
 
   if (mpError) {
-    console.error('Error reading provider_mp_credentials for checkout', mpError)
-    return NextResponse.json({ error: 'No se pudo validar la conexión del proveedor' }, { status: 500 })
+    console.error('Error reading provider_mp_credentials for subscription', mpError)
+    return NextResponse.json({ error: 'No se pudo validar las credenciales de Mercado Pago del proveedor' }, { status: 500 })
   }
 
   // Obtener access token de forma segura: priorizar cifrado, luego fallback legacy si existiera
@@ -78,7 +89,7 @@ export async function POST(request: Request) {
       accessToken = mpCredsRow.mp_access_token
     }
   } catch (e) {
-    console.error('Failed to decrypt provider Mercado Pago access token for checkout', e)
+    console.error('Failed to decrypt provider Mercado Pago access token for subscription', e)
     return NextResponse.json({ error: 'No se pudieron leer las credenciales de Mercado Pago del proveedor' }, { status: 500 })
   }
 
@@ -86,7 +97,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'El proveedor aún no configuró correctamente sus credenciales de Mercado Pago' }, { status: 400 })
   }
 
-  // 1) Crear orden en estado pending (el webhook la marcará paid)
+  // Crear orden local asociada a la suscripción (estado pending)
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
@@ -96,7 +107,7 @@ export async function POST(request: Request) {
       quotation_id: quotation.id,
       status: 'pending',
       amount,
-      platform_fee: platformFee,
+      platform_fee: 0, // la comisión se liquida fuera del sistema
       scheduled_for: null,
       paid_at: null,
       payment_reference: null,
@@ -105,8 +116,8 @@ export async function POST(request: Request) {
     .single()
 
   if (orderError || !order) {
-    console.error('Error creating order for checkout', orderError)
-    return NextResponse.json({ error: 'No se pudo crear la orden' }, { status: 500 })
+    console.error('Error creating order for subscription', orderError)
+    return NextResponse.json({ error: 'No se pudo crear la orden local de suscripción' }, { status: 500 })
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
@@ -114,62 +125,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Falta NEXT_PUBLIC_SITE_URL' }, { status: 500 })
   }
 
-  const notificationUrl = `${siteUrl.replace(/\/$/, '')}/api/mercadopago/webhook?provider_id=${encodeURIComponent(
+  const baseUrl = siteUrl.replace(/\/$/, '')
+
+  const notificationUrl = `${baseUrl}/api/mercadopago/webhook?provider_id=${encodeURIComponent(
     quotation.provider_id,
   )}&order_id=${encodeURIComponent(order.id)}`
 
-  const preferenceBody: any = {
-    items: [
-      {
-        title: service?.name || 'Servicio',
-        quantity: 1,
-        unit_price: amount,
-        currency_id: 'ARS',
-      },
-    ],
-    marketplace_fee: platformFee,
-    external_reference: order.id,
+  const preapprovalBody: any = {
+    reason: service.name || 'Suscripción mensual de servicio',
+    external_reference: String(order.id),
+    auto_recurring: {
+      frequency: 1,
+      frequency_type: 'months',
+      transaction_amount: amount,
+      currency_id: 'ARS',
+    },
+    back_url: `${baseUrl}/client/dashboard?subscription=return`,
     notification_url: notificationUrl,
-    metadata: {
-      order_id: order.id,
-      quotation_id: quotation.id,
-    },
-    auto_return: 'approved',
-    back_urls: {
-      success: `${siteUrl.replace(/\/$/, '')}/client/dashboard?payment=success`,
-      pending: `${siteUrl.replace(/\/$/, '')}/client/dashboard?payment=pending`,
-      failure: `${siteUrl.replace(/\/$/, '')}/client/dashboard?payment=failure`,
-    },
   }
 
-  // Nota: marketplace_fee cobra automáticamente la comisión del marketplace.
-
-  const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
+  const mpRes = await fetch('https://api.mercadopago.com/preapproval', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(preferenceBody),
+    body: JSON.stringify(preapprovalBody),
   })
 
   if (!mpRes.ok) {
     const text = await mpRes.text().catch(() => '')
-    console.error('Mercado Pago preference creation failed', mpRes.status, text)
-    return NextResponse.json({ error: 'Mercado Pago rechazó la creación del pago' }, { status: 502 })
+    console.error('Mercado Pago preapproval creation failed', mpRes.status, text)
+    return NextResponse.json({ error: 'Mercado Pago rechazó la creación de la suscripción' }, { status: 502 })
   }
 
-  const pref = (await mpRes.json().catch(() => null)) as any
+  const preapproval = (await mpRes.json().catch(() => null)) as any
 
-  const initPoint = pref?.init_point as string | undefined
-  const prefId = pref?.id as string | undefined
+  const initPoint = preapproval?.init_point as string | undefined
+  const preapprovalId = preapproval?.id as string | undefined
 
-  if (prefId) {
-    await supabase.from('orders').update({ payment_reference: prefId }).eq('id', order.id)
+  if (preapprovalId) {
+    await supabase
+      .from('orders')
+      .update({ subscription_id: preapprovalId })
+      .eq('id', order.id)
   }
 
   if (!initPoint) {
-    console.error('Mercado Pago response missing init_point', pref)
+    console.error('Mercado Pago preapproval response missing init_point', preapproval)
     return NextResponse.json({ error: 'Respuesta inválida de Mercado Pago' }, { status: 502 })
   }
 

@@ -181,7 +181,11 @@ export default async function ProviderPublicProfile({ params }: ProviderPageProp
                       >
                         Ver detalle
                       </a>
-                      <PlanQuotationButton providerId={providerId} />
+                      <PlanQuotationButton
+                        providerId={providerId}
+                        serviceId={String(svc.id)}
+                        serviceName={svc.name}
+                      />
                     </div>
                   </div>
                 </Card>

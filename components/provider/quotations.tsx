@@ -30,6 +30,7 @@ interface ProviderQuotationItem {
   clientDeletedAt: string | null
   rejectedBy: string | null
   handledByEmail: string | null
+  serviceBillingMode?: 'one_time' | 'monthly' | null
 }
 
 interface ProviderQuotationsProps {
@@ -59,6 +60,10 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
   const [customPdfs, setCustomPdfs] = useState<string[]>([])
   const [showExistingPlanSection, setShowExistingPlanSection] = useState(false)
   const [showCustomPlanSection, setShowCustomPlanSection] = useState(false)
+  const [billingModeInput, setBillingModeInput] = useState<'one_time' | 'monthly'>('one_time')
+  const [showMainPricingSection, setShowMainPricingSection] = useState(false)
+  const [customPlanPrice, setCustomPlanPrice] = useState("")
+  const [customPlanBillingMode, setCustomPlanBillingMode] = useState<'one_time' | 'monthly'>('one_time')
   const clientRejectedSectionRef = useRef<HTMLDivElement | null>(null)
 
   const handleEnablePayment = async () => {
@@ -121,7 +126,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       const { data: quotations, error } = await supabase
         .from("quotations")
         .select(
-          "id, client_full_name, client_email, client_phone, service_id, status, view_status, proposed_price, created_at, notes, provider_notes, extra_docs_requested, extra_docs_message, extra_docs_client_text, payment_enabled, client_deleted_at, rejected_by, dni_front_url, dni_back_url, extra_docs_urls, handled_by_email",
+          "id, client_full_name, client_email, client_phone, service_id, status, view_status, proposed_price, created_at, notes, provider_notes, extra_docs_requested, extra_docs_message, extra_docs_client_text, payment_enabled, client_deleted_at, rejected_by, dni_front_url, dni_back_url, extra_docs_urls, handled_by_email, requested_billing_mode",
         )
         .eq("provider_id", effectiveProviderId)
         .is("provider_deleted_at", null)
@@ -141,7 +146,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       const { data: services } = serviceIds.length
         ? await supabase
             .from("services")
-            .select("id, name")
+            .select("id, name, billing_mode")
             .in("id", serviceIds)
         : { data: [] as any[] }
 
@@ -164,6 +169,17 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
         const service = services?.find((s: any) => s.id === q.service_id)
         const extraDocsRequested = (q.extra_docs_requested as boolean | null) ?? false
         const rawPaymentEnabled = q.payment_enabled as boolean | null
+
+        const billingMode: 'one_time' | 'monthly' | null =
+          service?.billing_mode === 'monthly'
+            ? 'monthly'
+            : service?.billing_mode === 'one_time'
+            ? 'one_time'
+            : (q.requested_billing_mode === 'monthly'
+                ? 'monthly'
+                : q.requested_billing_mode === 'one_time'
+                ? 'one_time'
+                : null)
 
         return {
           id: q.id as number,
@@ -191,6 +207,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
           clientDeletedAt: (q.client_deleted_at as string | null) || null,
           rejectedBy: (q.rejected_by as string | null) || null,
           handledByEmail: (q.handled_by_email as string | null) || null,
+          serviceBillingMode: billingMode,
         }
       })
 
@@ -338,6 +355,17 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
     setProviderNotesInput(item.providerNotes || "")
     setExtraDocsRequestedInput(item.extraDocsRequested)
     setExtraDocsMessageInput(item.extraDocsMessage || "")
+    setBillingModeInput(item.serviceBillingMode || 'one_time')
+    setShowMainPricingSection(false)
+    setShowExistingPlanSection(false)
+    setShowCustomPlanSection(false)
+    setCustomPlanName("")
+    setCustomPlanDescription("")
+    setCustomMaxMembers("1")
+    setCustomImages([])
+    setCustomPdfs([])
+    setCustomPlanPrice("")
+    setCustomPlanBillingMode('one_time')
 
     if (!item.viewStatus || item.viewStatus === "sin_observar") {
       const supabase = createClient()
@@ -440,7 +468,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       return
     }
 
-    const numericPrice = priceInput.trim() ? Number(priceInput) : null
+    const numericPrice = customPlanPrice.trim() ? Number(customPlanPrice) : null
     if (numericPrice == null || Number.isNaN(numericPrice) || numericPrice <= 0) {
       notify("error", "Ingresa un importe válido para la cotización.", "Precio inválido")
       return
@@ -474,6 +502,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
           base_price: numericPrice,
           is_active: true,
           is_public: false,
+          billing_mode: customPlanBillingMode,
           max_members: maxMembersNumber > 0 ? maxMembersNumber : 1,
           service_areas: [],
           image_urls: customImages,
@@ -499,6 +528,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
           extra_docs_message: extraDocsRequestedInput ? extraDocsMessageInput || null : null,
           payment_enabled: !extraDocsRequestedInput,
           handled_by_email: handledByEmail,
+          requested_billing_mode: customPlanBillingMode,
           status: "accepted",
         })
         .eq("id", selected.id)
@@ -541,6 +571,8 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       setCustomMaxMembers("1")
       setCustomImages([])
       setCustomPdfs([])
+      setCustomPlanPrice("")
+      setCustomPlanBillingMode('one_time')
       setShowCustomPlanSection(false)
 
       notify("success", "Se creó y envió un plan personalizado al cliente.", "Plan personalizado enviado")
@@ -551,13 +583,6 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
 
   const handleSaveProposal = async () => {
     if (!selected) return
-
-    // Validación previa: si la sección de "Enviar otro plan" está abierta pero no se eligió ninguno,
-    // mostramos un mensaje claro y no continuamos.
-    if (showExistingPlanSection && !selectedExistingServiceId) {
-      notify("error", "Elegí un plan del catálogo para poder enviar la propuesta.", "Selecciona un plan")
-      return
-    }
 
     const numericPrice = priceInput.trim() ? Number(priceInput) : null
     if (numericPrice == null || Number.isNaN(numericPrice) || numericPrice <= 0) {
@@ -596,6 +621,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
           extra_docs_message: extraDocsRequestedInput ? extraDocsMessageInput || null : null,
           payment_enabled: !extraDocsRequestedInput,
           handled_by_email: handledByEmail,
+          requested_billing_mode: billingModeInput,
           status: "accepted",
         })
         .eq("id", selected.id)
@@ -989,31 +1015,24 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4 mt-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Importe de la cotización (ARS)</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={priceInput}
-                  onChange={(e) => setPriceInput(e.target.value)}
-                  placeholder="Ej: 15000"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notas o condiciones para el cliente</label>
-                <textarea
-                  className="w-full min-h-[80px] border rounded-md px-3 py-2 text-sm"
-                  value={providerNotesInput}
-                  onChange={(e) => setProviderNotesInput(e.target.value)}
-                  placeholder="Detalles de la propuesta, condiciones, formas de pago, etc."
-                />
-              </div>
-            </div>
-
             <div className="space-y-3 border-t pt-4 mt-2 text-sm">
               <p className="font-medium">Opciones de plan para esta solicitud</p>
               <div className="flex flex-wrap gap-2">
+                {selected?.serviceName && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowMainPricingSection(true)
+                      setShowExistingPlanSection(false)
+                      setShowCustomPlanSection(false)
+                    }}
+                    disabled={saving}
+                  >
+                    Seguir con plan solicitado
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -1021,6 +1040,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                   onClick={() => {
                     setShowExistingPlanSection((prev) => !prev)
                     setShowCustomPlanSection(false)
+                    setShowMainPricingSection(false)
                   }}
                   disabled={saving}
                 >
@@ -1033,6 +1053,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                   onClick={() => {
                     setShowCustomPlanSection((prev) => !prev)
                     setShowExistingPlanSection(false)
+                    setShowMainPricingSection(false)
                   }}
                   disabled={saving}
                 >
@@ -1129,6 +1150,31 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                       onChange={(e) => setCustomMaxMembers(e.target.value)}
                     />
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="space-y-1">
+                      <label className="font-medium">Precio del plan personalizado (ARS)</label>
+                      <Input
+                        type="number"
+                        min={0}
+                        className="h-8"
+                        value={customPlanPrice}
+                        onChange={(e) => setCustomPlanPrice(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-medium">Modalidad de cobro</label>
+                      <select
+                        className="w-full border rounded-md px-3 py-2 text-xs bg-white"
+                        value={customPlanBillingMode}
+                        onChange={(e) =>
+                          setCustomPlanBillingMode(e.target.value as 'one_time' | 'monthly')
+                        }
+                      >
+                        <option value="one_time">Pago único</option>
+                        <option value="monthly">Mensual (suscripción)</option>
+                      </select>
+                    </div>
+                  </div>
 
                   <div className="space-y-2 text-xs">
                     <label className="font-medium">Imágenes opcionales del plan</label>
@@ -1160,6 +1206,33 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                 </div>
               )}
             </div>
+
+            {showMainPricingSection && (
+              <div className="mt-4 space-y-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Importe de la cotización (ARS)</label>
+                  <Input
+                    type="number"
+                    placeholder="Ej: 15000"
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Modalidad de cobro para este plan</label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={billingModeInput}
+                    onChange={(e) => setBillingModeInput(e.target.value as 'one_time' | 'monthly')}
+                    disabled={saving}
+                  >
+                    <option value="one_time">Pago único</option>
+                    <option value="monthly">Mensual (suscripción)</option>
+                  </select>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2 border-t pt-4 mt-2 text-sm">
               <label className="flex items-center gap-2">
@@ -1213,18 +1286,18 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                   const supabase = createClient()
                   const { error } = await supabase
                     .from("quotations")
-                    .update({ status: "rejected" })
+                    .delete()
                     .eq("id", selected.id)
 
                   if (error) {
-                    console.error("Error rejecting quotation by provider", error)
+                    console.error("Error deleting quotation by provider", error)
                     notify("error", "Intenta nuevamente en unos minutos.", "No se pudo rechazar la cotización")
                     return
                   }
 
-                  setItems((prev) => prev.map((q) => (q.id === selected.id ? { ...q, status: "rejected" } : q)))
+                  setItems((prev) => prev.filter((q) => q.id !== selected.id))
                   setSelected(null)
-                  notify("success", "El cliente verá que la propuesta fue rechazada.", "Cotización rechazada")
+                  notify("success", "La cotización fue eliminada correctamente.", "Cotización rechazada")
                 }}
               >
                 Rechazar

@@ -5,7 +5,7 @@ export interface Service {
   name: string
   description: string
   price: string
-  billingMode?: 'one_time' | 'monthly' | 'both'
+  billingMode?: 'one_time' | 'monthly'
   areas: string[]
   images: string[]
   videos: string[]

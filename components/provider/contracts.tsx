@@ -26,6 +26,19 @@ export function ProviderContracts() {
   const [selected, setSelected] = useState<ProviderContractItem | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterDate, setFilterDate] = useState("")
+  const [contractText, setContractText] = useState<string | null>(null)
+  const [contractNumber, setContractNumber] = useState<string | null>(null)
+  const [receipt, setReceipt] = useState<
+    | {
+        receiptNumber: number
+        details: string | null
+        amount: number
+        issuedAt: string
+      }
+    | null
+  >(null)
+  const [loadingContract, setLoadingContract] = useState(false)
+  const [loadingReceipt, setLoadingReceipt] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -41,6 +54,144 @@ export function ProviderContracts() {
         setLoading(false)
         return
       }
+
+  const handleViewContract = async (item: ProviderContractItem) => {
+    setLoadingContract(true)
+    setContractText(null)
+    setContractNumber(null)
+
+    try {
+      const supabase = createClient()
+
+      const { data, error } = await supabase
+        .from("contracts")
+        .select("contract_text, contract_number")
+        .eq("order_id", item.orderId)
+        .maybeSingle()
+
+      if (error) {
+        console.error("Error fetching contract text", error)
+        toast({
+          title: "No se pudo cargar el contrato",
+          description: "Intenta nuevamente en unos minutos.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!data?.contract_text) {
+        toast({
+          title: "Contrato no disponible",
+          description: "Aún no hay un texto de contrato generado para esta orden.",
+        })
+        return
+      }
+
+      setContractText(data.contract_text as string)
+      setContractNumber((data.contract_number as string) || null)
+    } finally {
+      setLoadingContract(false)
+    }
+  }
+
+  const handleViewLastReceipt = async (item: ProviderContractItem) => {
+    setLoadingReceipt(true)
+    setReceipt(null)
+
+    try {
+      const supabase = createClient()
+
+      const { data, error } = await supabase
+        .from("payment_receipts")
+        .select("receipt_number, details, amount, issued_at")
+        .eq("order_id", item.orderId)
+        .order("receipt_number", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) {
+        console.error("Error fetching last payment receipt", error)
+        toast({
+          title: "No se pudo cargar el comprobante",
+          description: "Intenta nuevamente en unos minutos.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!data) {
+        toast({
+          title: "Sin comprobantes",
+          description: "Todavía no hay comprobantes de pago para esta orden.",
+        })
+        return
+      }
+
+      setReceipt({
+        receiptNumber: data.receipt_number as number,
+        details: (data.details as string) ?? null,
+        amount: Number(data.amount || 0),
+        issuedAt: data.issued_at as string,
+      })
+    } finally {
+      setLoadingReceipt(false)
+    }
+  }
+
+  const handlePrintContract = () => {
+    if (!contractText) {
+      toast({
+        title: "Primero abre el contrato",
+        description: "Haz clic en 'Ver contrato' antes de imprimir.",
+      })
+      return
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer")
+    if (!printWindow) return
+
+    const title = contractNumber ? `Contrato ${contractNumber}` : "Contrato"
+    printWindow.document.write(`<!doctype html><html><head><title>${title}</title></head><body>`)
+    printWindow.document.write(`<h1>${title}</h1>`)
+    printWindow.document.write(`<pre style="white-space:pre-wrap;font-family:inherit;">${
+      contractText.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }</pre>`)
+    printWindow.document.write("</body></html>")
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
+
+  const handlePrintReceipt = () => {
+    if (!receipt) {
+      toast({
+        title: "Primero abre el comprobante",
+        description: "Haz clic en 'Ver último comprobante' antes de imprimir.",
+      })
+      return
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer")
+    if (!printWindow) return
+
+    const fecha = new Date(receipt.issuedAt).toLocaleString("es-AR")
+    const encabezado = `Recibo N° ${receipt.receiptNumber} - Fecha de emisión: ${fecha}`
+
+    printWindow.document.write("<!doctype html><html><head><title>Comprobante de pago</title></head><body>")
+    printWindow.document.write(`<h1>${encabezado}</h1>`)
+    printWindow.document.write(`<p><strong>Importe pagado:</strong> $${receipt.amount.toFixed(2)}</p>`)
+    if (receipt.details) {
+      printWindow.document.write(
+        `<pre style="white-space:pre-wrap;font-family:inherit;">${receipt.details
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</pre>`,
+      )
+    }
+    printWindow.document.write("</body></html>")
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
 
       // Determinar qué ID de proveedor usar.
       // 1) Si en los metadatos del usuario viene parent_provider_id (empleado), usamos ese.
@@ -350,7 +501,57 @@ export function ProviderContracts() {
               </div>
             )}
 
-            <div className="pt-4 flex justify-end gap-2">
+            {contractText && (
+              <div className="space-y-1 text-sm mt-4">
+                <p className="font-medium">Contrato generado</p>
+                {contractNumber && (
+                  <p className="text-xs text-muted-foreground mb-1">Número: {contractNumber}</p>
+                )}
+                <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-64 overflow-auto">
+                  {contractText}
+                </pre>
+              </div>
+            )}
+
+            {receipt && (
+              <div className="space-y-1 text-sm mt-4">
+                <p className="font-medium">Último comprobante de pago</p>
+                <p className="text-xs text-muted-foreground">
+                  Recibo N° {receipt.receiptNumber} - Emitido el{" "}
+                  {new Date(receipt.issuedAt).toLocaleString("es-AR")}
+                </p>
+                <p className="text-xs text-muted-foreground">Importe pagado: ${receipt.amount.toFixed(2)}</p>
+                {receipt.details && (
+                  <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-64 overflow-auto">
+                    {receipt.details}
+                  </pre>
+                )}
+              </div>
+            )}
+
+            <div className="pt-4 flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loadingContract}
+                onClick={() => handleViewContract(selected)}
+              >
+                {loadingContract ? "Cargando contrato..." : "Ver contrato"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loadingReceipt}
+                onClick={() => handleViewLastReceipt(selected)}
+              >
+                {loadingReceipt ? "Cargando comprobante..." : "Ver último comprobante"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handlePrintContract}>
+                Imprimir contrato
+              </Button>
+              <Button variant="outline" size="sm" onClick={handlePrintReceipt}>
+                Imprimir comprobante
+              </Button>
               <Button
                 variant="outline"
                 className="border-red-200 text-red-600 hover:bg-red-50"
