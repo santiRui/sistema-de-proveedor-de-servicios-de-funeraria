@@ -22,6 +22,7 @@ interface ProviderQuotationItem {
   providerNotes: string | null
   extraDocsRequested: boolean
   extraDocsMessage: string | null
+  familyMembers?: { full_name: string; dni: string; age: number | null }[] | null
   dniFrontUrl: string | null
   dniBackUrl: string | null
   extraDocsUrls: string[]
@@ -126,7 +127,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
       const { data: quotations, error } = await supabase
         .from("quotations")
         .select(
-          "id, client_full_name, client_email, client_phone, service_id, status, view_status, proposed_price, created_at, notes, provider_notes, extra_docs_requested, extra_docs_message, extra_docs_client_text, payment_enabled, client_deleted_at, rejected_by, dni_front_url, dni_back_url, extra_docs_urls, handled_by_email, requested_billing_mode",
+          "id, client_full_name, client_email, client_phone, service_id, status, view_status, proposed_price, created_at, notes, provider_notes, extra_docs_requested, extra_docs_message, extra_docs_client_text, payment_enabled, client_deleted_at, rejected_by, dni_front_url, dni_back_url, extra_docs_urls, handled_by_email, requested_billing_mode, family_members",
         )
         .eq("provider_id", effectiveProviderId)
         .is("provider_deleted_at", null)
@@ -195,6 +196,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
           providerNotes: (q.provider_notes as string | null) || null,
           extraDocsRequested,
           extraDocsMessage: (q.extra_docs_message as string | null) || null,
+          familyMembers: (q.family_members as { full_name: string; dni: string; age: number | null }[] | null) || null,
           dniFrontUrl: (q.dni_front_url as string | null) || null,
           dniBackUrl: (q.dni_back_url as string | null) || null,
           extraDocsUrls: (q.extra_docs_urls as string[] | null) || [],
@@ -584,6 +586,13 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
   const handleSaveProposal = async () => {
     if (!selected) return
 
+    // Si eligió crear un plan personalizado, usamos esa ruta y las validaciones
+    // propias de ese bloque (nombre, precio del plan personalizado, etc.).
+    if (showCustomPlanSection) {
+      await handleCreateCustomPlan()
+      return
+    }
+
     const numericPrice = priceInput.trim() ? Number(priceInput) : null
     if (numericPrice == null || Number.isNaN(numericPrice) || numericPrice <= 0) {
       notify("error", "Ingresa un importe válido para la cotización.", "Precio inválido")
@@ -593,12 +602,6 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
     // Si el proveedor eligió enviar otro plan existente, usamos esa ruta
     if (showExistingPlanSection && selectedExistingServiceId) {
       await handleSendExistingPlan()
-      return
-    }
-
-    // Si eligió crear un plan personalizado, usamos esa ruta
-    if (showCustomPlanSection) {
-      await handleCreateCustomPlan()
       return
     }
 
@@ -1006,33 +1009,52 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
                   )}
                 </div>
               </div>
-            )}
+          )}
 
-            {selected.notes && (
-              <div className="space-y-1 text-sm">
-                <p className="font-medium">Notas del cliente</p>
-                <p className="text-muted-foreground whitespace-pre-line">{selected.notes}</p>
+          {selected.familyMembers && selected.familyMembers.length > 0 && (
+            <div className="space-y-2 text-sm border-t pt-4 mt-2">
+              <p className="font-medium">Grupo familiar solicitado</p>
+              <p className="text-muted-foreground">
+                Cantidad de personas: {1 + selected.familyMembers.length}
+              </p>
+              <div className="space-y-1">
+                {selected.familyMembers.map((m, index) => (
+                  <div key={index} className="text-xs text-gray-700 flex flex-wrap gap-3">
+                    <span className="font-medium">Integrante #{index + 2}:</span>
+                    <span>Nombre: {m.full_name}</span>
+                    <span>DNI: {m.dni}</span>
+                    {m.age != null && <span>Edad: {m.age}</span>}
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            <div className="space-y-3 border-t pt-4 mt-2 text-sm">
-              <p className="font-medium">Opciones de plan para esta solicitud</p>
-              <div className="flex flex-wrap gap-2">
-                {selected?.serviceName && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowMainPricingSection(true)
-                      setShowExistingPlanSection(false)
-                      setShowCustomPlanSection(false)
-                    }}
-                    disabled={saving}
-                  >
-                    Seguir con plan solicitado
-                  </Button>
-                )}
+          {selected.notes && (
+            <div className="space-y-1 text-sm">
+              <p className="font-medium">Notas del cliente</p>
+              <p className="text-muted-foreground whitespace-pre-line">{selected.notes}</p>
+            </div>
+          )}
+
+          <div className="space-y-3 border-t pt-4 mt-2 text-sm">
+            <p className="font-medium">Opciones de plan para esta solicitud</p>
+            <div className="flex flex-wrap gap-2">
+              {selected.serviceName && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowMainPricingSection(true)
+                    setShowExistingPlanSection(false)
+                    setShowCustomPlanSection(false)
+                  }}
+                  disabled={saving}
+                >
+                  Seguir con plan solicitado
+                </Button>
+              )}
                 <Button
                   type="button"
                   variant="outline"

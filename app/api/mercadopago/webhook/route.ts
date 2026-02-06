@@ -288,10 +288,12 @@ async function handlePaymentNotification(params: {
       const mes = meses[paidDate.getMonth()] || ''
       const anio = paidDate.getFullYear()
 
-      const modalidad =
-        (quotation as any)?.requested_billing_mode === 'monthly'
-          ? 'Póliza mensual (suscripción)'
-          : 'Pago único por el servicio detallado'
+      const serviceBillingMode = (service as any)?.billing_mode as string | undefined
+      const quotationBillingMode = (quotation as any)?.requested_billing_mode as string | undefined
+
+      const isMonthly = serviceBillingMode === 'monthly' || quotationBillingMode === 'monthly'
+
+      const modalidad = isMonthly ? 'Póliza mensual (suscripción)' : 'Pago único por el servicio detallado'
 
       const encabezado = 'SOLICITUD DE ALTA\nDeclaración Jurada\n\n'
 
@@ -308,16 +310,14 @@ async function handlePaymentNotification(params: {
         (titularEdad ? `, de ${titularEdad} años` : '') +
         ` y con domicilio en ${titularDomicilio}, solicita a ${empresaNombre}` +
         (empresaDomicilio ? `, con domicilio en ${empresaDomicilio},` : ',') +
-        ' la provisión de servicios sociales de acuerdo a lo establecido en este contrato para todas las personas individualizadas a continuación, con las condiciones y cláusulas que se encuentran al reverso de esta hoja.\n\n'
+        ' la provisión de servicios sociales de acuerdo a lo establecido en este contrato para todas las personas individualizadas a continuación.\n\n'
 
-      const bloqueIntegrantes = `Integrantes del grupo familiar incluidos en el convenio:\n${integrantesTexto}\n\n`
-
-      const bloqueNota =
-        'NOTA: Los afiliados solo cuentan con los servicios que tienen fecha de vigencia. ' +
-        'Los servicios que no figuran en el presente contrato no han sido contratados.\n\n'
+      const bloqueIntegrantes = `Integrantes incluidos en el convenio:\n${integrantesTexto}\n\n`
 
       const bloqueCaracteristicas =
-        `Características del servicio: Incluye ${descripcionServicio || 'las prestaciones detalladas en el plan contratado.'}`
+        `Características del servicio: Incluye ${
+          descripcionServicio || 'las prestaciones detalladas en el plan contratado.'
+        }`
 
       const contractText =
         encabezado +
@@ -325,7 +325,6 @@ async function handlePaymentNotification(params: {
         bloqueFechaLugar +
         bloqueIntro +
         bloqueIntegrantes +
-        bloqueNota +
         bloqueCaracteristicas
 
       const contractNumber = `CT-${new Date().getFullYear()}-${params.orderId}`
@@ -347,13 +346,19 @@ async function handlePaymentNotification(params: {
   try {
     const titularNombre = (quotation as any)?.client_full_name || ''
     const titularDomicilio = (quotation as any)?.client_address || ''
+    const titularDni = (quotation as any)?.client_dni || ''
+    const titularEdadVal = (quotation as any)?.client_age as number | null | undefined
 
     const grupoFamiliar = Array.isArray((quotation as any)?.family_members)
       ? ((quotation as any).family_members as any[])
       : []
 
+    const titularLineaBase = titularNombre || 'Titular'
+    const titularEdad =
+      titularEdadVal != null && !Number.isNaN(titularEdadVal) ? ` - Edad ${titularEdadVal}` : ''
+
     const integrantesLineas = [
-      titularNombre ? `${titularNombre} - Titular` : 'Titular',
+      `${titularLineaBase}${titularDni ? ` - DNI ${titularDni}` : ''}${titularEdad} - Titular`,
       ...grupoFamiliar.map((m: any) => {
         const nombre = m.full_name || m.nombre || ''
         const dni = m.dni || m.documento || ''
@@ -367,21 +372,14 @@ async function handlePaymentNotification(params: {
 
     const esMensual = (service as any)?.billing_mode === 'monthly'
 
-    // Para el alta de suscripción (subscription_preapproval) consideramos que la primera cuota
-    // corresponde al mes siguiente al alta. Para pagos normales usamos el mes del pago.
+    // Para los recibos de suscripción y pagos mensuales usamos siempre el mes del pago
+    // como período de la cuota (ej: pago el 05/02/2026 -> período 02/2026).
     let periodoMes: number | null = null
     let periodoAnio: number | null = null
 
     if (esMensual) {
-      if (params.eventType === 'subscription_preapproval') {
-        const nextMonth = paidDate.getMonth() + 1 // 0-based
-        const nextYear = paidDate.getFullYear() + (nextMonth >= 12 ? 1 : 0)
-        periodoMes = ((nextMonth % 12) + 1) as number
-        periodoAnio = nextYear
-      } else {
-        periodoMes = paidDate.getMonth() + 1
-        periodoAnio = paidDate.getFullYear()
-      }
+      periodoMes = paidDate.getMonth() + 1
+      periodoAnio = paidDate.getFullYear()
     }
 
     const detallePrincipal = esMensual && periodoMes && periodoAnio
@@ -391,7 +389,9 @@ async function handlePaymentNotification(params: {
     const avisoVencimiento =
       'RECUERDE: para mantener la vigencia del seguro de sepelio, este pago debe efectuarse hasta el día 30 de cada mes.'
 
-    const detalles = `${detallePrincipal}\n\nIntegrantes:\n${integrantesTextoRecibo}\n\n${avisoVencimiento}`
+    // Texto base para el PDF: la separación visual (líneas) se maneja desde el generador de PDF.
+    // Dejamos más espacio antes de la nota "RECUERDE" para que se vea separada.
+    const detalles = `${detallePrincipal}\n\nIntegrantes:\n${integrantesTextoRecibo}\n\n\n${avisoVencimiento}`
 
     await admin.from('payment_receipts').insert({
       order_id: params.orderId,

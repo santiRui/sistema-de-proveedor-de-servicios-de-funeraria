@@ -52,8 +52,9 @@ export default async function ProviderPublicProfile({ params }: ProviderPageProp
 
   const { data: services } = await supabase
     .from("services")
-    .select("id, name, description, base_price, service_areas, image_urls")
+    .select("id, name, description, base_price, service_areas, image_urls, is_public")
     .eq("provider_id", providerId)
+    .eq("is_public", true)
 
   const servicesList = (services || []).map((svc: any) => {
     const priceNumber = svc.base_price != null ? Number(svc.base_price) : null
