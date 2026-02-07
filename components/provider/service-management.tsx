@@ -11,7 +11,7 @@ import { getProviderProfile } from "@/app/provider/actions"
 import { createClient } from "@/lib/supabase/client"
 import { ARGENTINA_PROVINCES, DEPARTMENTS_BY_PROVINCE } from "@/lib/constants"
 import { summarizeServiceAreas } from "@/lib/utils"
-import { Plus, Trash2, Edit2, X, Upload } from "lucide-react"
+import { Plus, Trash2, Edit2, X, Upload, ChevronDown, ChevronUp } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export function ServiceManagement() {
@@ -34,6 +34,8 @@ export function ServiceManagement() {
     pdfs: [] as string[],
     maxMembers: "1",
   })
+
+  const [expandedProvince, setExpandedProvince] = useState<string | null>(null)
 
   const [newArea, setNewArea] = useState("")
   const [areasHistory, setAreasHistory] = useState<string[][]>([])
@@ -187,6 +189,51 @@ export function ServiceManagement() {
 
   const handleRemoveArea = (area: string) => {
     updateAreas(formData.areas.filter((a) => a !== area))
+  }
+
+  // Helpers para selección por provincia/departamento (similar a ProviderProfile pero usando formData.areas)
+  const toggleProvinceExpand = (province: string) => {
+    setExpandedProvince(expandedProvince === province ? null : province)
+  }
+
+  const isProvinceFullySelected = (province: string) => {
+    const depts = DEPARTMENTS_BY_PROVINCE[province] || []
+    if (depts.length === 0) return false
+    return depts.every((d) => formData.areas.includes(`${province}: ${d}`))
+  }
+
+  const isProvincePartiallySelected = (province: string) => {
+    const depts = DEPARTMENTS_BY_PROVINCE[province] || []
+    if (depts.length === 0) return false
+    const selectedCount = depts.filter((d) => formData.areas.includes(`${province}: ${d}`)).length
+    return selectedCount > 0 && selectedCount < depts.length
+  }
+
+  const handleProvinceCheckbox = (province: string) => {
+    const depts = DEPARTMENTS_BY_PROVINCE[province] || []
+    const allSelected = isProvinceFullySelected(province)
+
+    let newAreas = [...formData.areas]
+
+    if (allSelected) {
+      // Deseleccionar todos los departamentos de esta provincia
+      newAreas = newAreas.filter((a) => !a.startsWith(`${province}:`))
+    } else {
+      // Seleccionar todos los departamentos: quitamos los existentes de esa provincia y agregamos todos
+      newAreas = newAreas.filter((a) => !a.startsWith(`${province}:`))
+      const toAdd = depts.map((d) => `${province}: ${d}`)
+      newAreas = [...newAreas, ...toAdd]
+    }
+
+    updateAreas(newAreas)
+  }
+
+  const handleDepartmentCheckbox = (province: string, department: string) => {
+    const value = `${province}: ${department}`
+    const nextAreas = formData.areas.includes(value)
+      ? formData.areas.filter((a) => a !== value)
+      : [...formData.areas, value]
+    updateAreas(nextAreas)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -579,86 +626,68 @@ export function ServiceManagement() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-900">Cobertura aplicada</label>
-                <div className="space-y-2 text-xs text-gray-600 bg-white border rounded-lg p-3">
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {formData.areas.length === 0 && (
-                      <span className="px-3 py-1 rounded-full bg-gray-50 text-gray-500 border border-dashed border-gray-300">
-                        No hay ubicaciones seleccionadas para este servicio.
-                      </span>
-                    )}
-                    {formData.areas.map((area) => (
-                      <span
-                        key={area}
-                        className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-sm flex items-center gap-1"
-                      >
-                        {area}
-                        <button
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-900">Áreas de Cobertura</label>
+              <p className="text-xs text-gray-600 mb-1">
+                Selecciona las provincias y departamentos donde aplica este servicio. Puedes elegir provincias completas o
+                departamentos individuales.
+              </p>
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1 bg-white border rounded-lg p-3">
+                {ARGENTINA_PROVINCES.map((province) => {
+                  const isExpanded = expandedProvince === province
+                  const isFullySelected = isProvinceFullySelected(province)
+                  const isPartiallySelected = isProvincePartiallySelected(province)
+                  const departments = DEPARTMENTS_BY_PROVINCE[province] || []
+
+                  return (
+                    <div key={province} className="border rounded bg-gray-50 overflow-hidden">
+                      <div className="flex items-center justify-between p-3 hover:bg-gray-100">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            className={`w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 ${
+                              isPartiallySelected ? "opacity-50" : ""
+                            }`}
+                            checked={isFullySelected || isPartiallySelected}
+                            onChange={() => handleProvinceCheckbox(province)}
+                          />
+                          <span className="font-medium text-sm">{province}</span>
+                          <span className="text-[11px] text-gray-400">({departments.length} depts)</span>
+                        </div>
+                        <Button
                           type="button"
-                          onClick={() => handleRemoveArea(area)}
-                          className="ml-1 text-red-500 hover:text-red-700"
-                          aria-label={`Quitar ${area}`}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleProvinceExpand(province)}
+                          className="h-7 w-7 p-0"
                         >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-2 mb-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={undoAreas}
-                      disabled={areasHistory.length === 0}
-                    >
-                      Volver
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={clearAreas}
-                      disabled={formData.areas.length === 0}
-                    >
-                      Limpiar
-                    </Button>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                    <Input
-                      placeholder="Agregar ubicación extra (opcional)"
-                      value={newArea}
-                      onChange={(e) => setNewArea(e.target.value)}
-                    />
-                    <Button type="button" variant="outline" size="sm" onClick={handleAddCustomArea}>
-                      Añadir
-                    </Button>
-                  </div>
-                  {newArea && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {allCoverageOptions
-                        .filter((area) => {
-                          return matchesAreaQuery(area, newArea) && !formData.areas.includes(area)
-                        })
-                        .slice(0, 6)
-                        .map((area) => (
-                          <button
-                            key={area}
-                            type="button"
-                            onClick={() => {
-                              setNewArea("")
-                              toggleArea(area)
-                            }}
-                            className="px-2 py-1 rounded-full bg-white border border-emerald-200 text-emerald-700 text-xs hover:bg-emerald-50"
-                          >
-                            {area}
-                          </button>
-                        ))}
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="p-3 border-t bg-white grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {departments.map((dept) => (
+                            <label
+                              key={dept}
+                              className="flex items-center space-x-2 p-1 rounded text-xs cursor-pointer hover:bg-gray-50"
+                            >
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                checked={formData.areas.includes(`${province}: ${dept}`)}
+                                onChange={() => handleDepartmentCheckbox(province, dept)}
+                              />
+                              <span className="truncate" title={dept}>
+                                {dept}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  )
+                })}
               </div>
             </div>
 

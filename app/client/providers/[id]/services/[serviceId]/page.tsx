@@ -5,6 +5,7 @@ import { MapPin, Phone, Star } from "lucide-react"
 import Image from "next/image"
 import { PlanQuotationButton } from "@/components/client/plan-quotation-button"
 import { ImageCarousel } from "@/components/client/image-carousel"
+import { CoverageAccordion } from "@/components/client/coverage-accordion"
 
 interface ServiceDetailPageProps {
   params: Promise<{
@@ -84,6 +85,18 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
   const rating = 5
   const reviews = 0
 
+  const groupedAreas = areas.reduce<Record<string, string[]>>((acc, item) => {
+    const [provinceRaw, deptRaw] = item.split(":")
+    const province = (provinceRaw || "").trim()
+    const dept = (deptRaw || "").trim()
+    if (!province) return acc
+    if (!acc[province]) acc[province] = []
+    if (dept && !acc[province].includes(dept)) {
+      acc[province].push(dept)
+    }
+    return acc
+  }, {})
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-5xl mx-auto py-10 px-4 space-y-8">
@@ -146,15 +159,8 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
             </div>
           )}
 
-          {areas.length > 0 && (
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium">Zonas de cobertura</h3>
-              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
-                {areas.map((area) => (
-                  <li key={area}>{area}</li>
-                ))}
-              </ul>
-            </div>
+          {areas.length > 0 && Object.keys(groupedAreas).length > 0 && (
+            <CoverageAccordion groupedAreas={groupedAreas} />
           )}
 
           {(images.length > 0 || videos.length > 0 || pdfs.length > 0) && (

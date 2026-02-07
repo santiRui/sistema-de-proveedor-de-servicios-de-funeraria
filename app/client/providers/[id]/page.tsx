@@ -163,17 +163,48 @@ export default async function ProviderPublicProfile({ params }: ProviderPageProp
                       <p className="text-sm text-muted-foreground line-clamp-2">{svc.description}</p>
                     )}
 
-                    {svc.areas.length > 0 && (
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        <p className="font-medium">Zonas de cobertura:</p>
-                        <ul className="list-disc list-inside space-y-0.5">
-                          {svc.areas.slice(0, 4).map((area) => (
-                            <li key={area}>{area}</li>
-                          ))}
-                          {svc.areas.length > 4 && <li>y otras zonas...</li>}
-                        </ul>
-                      </div>
-                    )}
+                    {svc.areas.length > 0 && (() => {
+                      const grouped = svc.areas.reduce<Record<string, string[]>>((acc, item: string) => {
+                        const [provinceRaw, deptRaw] = item.split(":")
+                        const province = (provinceRaw || "").trim()
+                        const dept = (deptRaw || "").trim()
+                        if (!province) return acc
+                        if (!acc[province]) acc[province] = []
+                        if (dept && !acc[province].includes(dept)) {
+                          acc[province].push(dept)
+                        }
+                        return acc
+                      }, {})
+
+                      const provinceEntries = Object.entries(grouped)
+                      if (provinceEntries.length === 0) return null
+
+                      return (
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <p className="font-medium">Áreas de cobertura:</p>
+                          <div className="max-h-32 overflow-y-auto pr-1 border rounded-md bg-gray-50 p-2 space-y-1">
+                            {provinceEntries
+                              .filter(([, depts]) => depts.length > 0)
+                              .slice(0, 3)
+                              .map(([province, depts]) => (
+                                <div key={province} className="border rounded bg-white px-2 py-1 space-y-0.5">
+                                  <p className="font-medium text-gray-900 text-[11px]">{province}</p>
+                                  <p className="text-[10px] text-gray-500">{depts.length} deptos</p>
+                                  <ul className="list-disc list-inside text-[11px] space-y-0.5 pl-1">
+                                    {depts.slice(0, 4).map((dept) => (
+                                      <li key={dept}>{dept}</li>
+                                    ))}
+                                    {depts.length > 4 && <li>y otros...</li>}
+                                  </ul>
+                                </div>
+                              ))}
+                            {provinceEntries.filter(([, depts]) => depts.length > 0).length > 3 && (
+                              <p className="text-[11px] text-gray-500">y más provincias...</p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     <div className="pt-2 flex gap-2">
                       <a

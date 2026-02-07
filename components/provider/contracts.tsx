@@ -28,17 +28,18 @@ export function ProviderContracts() {
   const [filterDate, setFilterDate] = useState("")
   const [contractText, setContractText] = useState<string | null>(null)
   const [contractNumber, setContractNumber] = useState<string | null>(null)
-  const [receipt, setReceipt] = useState<
+  const [receipts, setReceipts] = useState<
     | {
+        id: string
         receiptNumber: number
-        details: string | null
-        amount: number
         issuedAt: string
-      }
+      }[]
     | null
   >(null)
-  const [loadingContract, setLoadingContract] = useState(false)
-  const [loadingReceipt, setLoadingReceipt] = useState(false)
+  const [selectedReceiptIndex, setSelectedReceiptIndex] = useState<number | null>(null)
+  const [loadingReceipts, setLoadingReceipts] = useState(false)
+  const [cancelTarget, setCancelTarget] = useState<ProviderContractItem | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
   const { toast } = useToast()
 
   useEffect(() => {
@@ -54,144 +55,6 @@ export function ProviderContracts() {
         setLoading(false)
         return
       }
-
-  const handleViewContract = async (item: ProviderContractItem) => {
-    setLoadingContract(true)
-    setContractText(null)
-    setContractNumber(null)
-
-    try {
-      const supabase = createClient()
-
-      const { data, error } = await supabase
-        .from("contracts")
-        .select("contract_text, contract_number")
-        .eq("order_id", item.orderId)
-        .maybeSingle()
-
-      if (error) {
-        console.error("Error fetching contract text", error)
-        toast({
-          title: "No se pudo cargar el contrato",
-          description: "Intenta nuevamente en unos minutos.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (!data?.contract_text) {
-        toast({
-          title: "Contrato no disponible",
-          description: "Aún no hay un texto de contrato generado para esta orden.",
-        })
-        return
-      }
-
-      setContractText(data.contract_text as string)
-      setContractNumber((data.contract_number as string) || null)
-    } finally {
-      setLoadingContract(false)
-    }
-  }
-
-  const handleViewLastReceipt = async (item: ProviderContractItem) => {
-    setLoadingReceipt(true)
-    setReceipt(null)
-
-    try {
-      const supabase = createClient()
-
-      const { data, error } = await supabase
-        .from("payment_receipts")
-        .select("receipt_number, details, amount, issued_at")
-        .eq("order_id", item.orderId)
-        .order("receipt_number", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (error) {
-        console.error("Error fetching last payment receipt", error)
-        toast({
-          title: "No se pudo cargar el comprobante",
-          description: "Intenta nuevamente en unos minutos.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (!data) {
-        toast({
-          title: "Sin comprobantes",
-          description: "Todavía no hay comprobantes de pago para esta orden.",
-        })
-        return
-      }
-
-      setReceipt({
-        receiptNumber: data.receipt_number as number,
-        details: (data.details as string) ?? null,
-        amount: Number(data.amount || 0),
-        issuedAt: data.issued_at as string,
-      })
-    } finally {
-      setLoadingReceipt(false)
-    }
-  }
-
-  const handlePrintContract = () => {
-    if (!contractText) {
-      toast({
-        title: "Primero abre el contrato",
-        description: "Haz clic en 'Ver contrato' antes de imprimir.",
-      })
-      return
-    }
-
-    const printWindow = window.open("", "_blank", "noopener,noreferrer")
-    if (!printWindow) return
-
-    const title = contractNumber ? `Contrato ${contractNumber}` : "Contrato"
-    printWindow.document.write(`<!doctype html><html><head><title>${title}</title></head><body>`)
-    printWindow.document.write(`<h1>${title}</h1>`)
-    printWindow.document.write(`<pre style="white-space:pre-wrap;font-family:inherit;">${
-      contractText.replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    }</pre>`)
-    printWindow.document.write("</body></html>")
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
-  }
-
-  const handlePrintReceipt = () => {
-    if (!receipt) {
-      toast({
-        title: "Primero abre el comprobante",
-        description: "Haz clic en 'Ver último comprobante' antes de imprimir.",
-      })
-      return
-    }
-
-    const printWindow = window.open("", "_blank", "noopener,noreferrer")
-    if (!printWindow) return
-
-    const fecha = new Date(receipt.issuedAt).toLocaleString("es-AR")
-    const encabezado = `Recibo N° ${receipt.receiptNumber} - Fecha de emisión: ${fecha}`
-
-    printWindow.document.write("<!doctype html><html><head><title>Comprobante de pago</title></head><body>")
-    printWindow.document.write(`<h1>${encabezado}</h1>`)
-    printWindow.document.write(`<p><strong>Importe pagado:</strong> $${receipt.amount.toFixed(2)}</p>`)
-    if (receipt.details) {
-      printWindow.document.write(
-        `<pre style="white-space:pre-wrap;font-family:inherit;">${receipt.details
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")}</pre>`,
-      )
-    }
-    printWindow.document.write("</body></html>")
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
-  }
 
       // Determinar qué ID de proveedor usar.
       // 1) Si en los metadatos del usuario viene parent_provider_id (empleado), usamos ese.
@@ -285,6 +148,82 @@ export function ProviderContracts() {
     loadContracts()
   }, [])
 
+  const handleViewContract = (item: ProviderContractItem) => {
+    const url = `/api/contracts/pdf?order_id=${encodeURIComponent(item.orderId)}`
+    const win = window.open(url, "_blank", "noopener,noreferrer")
+    if (!win) {
+      toast({
+        title: "Ventana bloqueada",
+        description: "Permite las ventanas emergentes para poder ver el contrato en PDF.",
+      })
+    }
+  }
+
+  const handleLoadReceipts = async (item: ProviderContractItem) => {
+    setLoadingReceipts(true)
+    setReceipts(null)
+    setSelectedReceiptIndex(null)
+
+    try {
+      const supabase = createClient()
+
+      const { data, error } = await supabase
+        .from("payment_receipts")
+        .select("id, receipt_number, issued_at")
+        .eq("order_id", item.orderId)
+        .order("issued_at", { ascending: false })
+
+      if (error) {
+        console.error("Error fetching payment receipts for provider", error)
+        toast({
+          title: "No se pudieron cargar los comprobantes",
+          description: "Intenta nuevamente en unos minutos.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!data || data.length === 0) {
+        toast({
+          title: "Sin comprobantes",
+          description: "Todavía no hay comprobantes de pago para este plan.",
+        })
+        return
+      }
+
+      const mapped = data.map((r: any) => ({
+        id: r.id as string,
+        receiptNumber: r.receipt_number as number,
+        issuedAt: r.issued_at as string,
+      }))
+
+      setReceipts(mapped)
+      setSelectedReceiptIndex(0)
+    } finally {
+      setLoadingReceipts(false)
+    }
+  }
+
+  const handleOpenReceiptPdf = () => {
+    if (!receipts || selectedReceiptIndex === null) {
+      toast({
+        title: "Primero elige un comprobante",
+        description: "Selecciona el comprobante que deseas ver en PDF.",
+      })
+      return
+    }
+
+    const receipt = receipts[selectedReceiptIndex]
+    const url = `/api/receipts/pdf?receipt_id=${encodeURIComponent(receipt.id)}`
+    const win = window.open(url, "_blank", "noopener,noreferrer")
+    if (!win) {
+      toast({
+        title: "Ventana bloqueada",
+        description: "Permite las ventanas emergentes para poder ver el comprobante en PDF.",
+      })
+    }
+  }
+
   const normalize = (value: string | null | undefined) => (value || "").toLowerCase().trim()
 
   const filteredItems: ProviderContractItem[] = items.filter((item: ProviderContractItem) => {
@@ -304,63 +243,76 @@ export function ProviderContracts() {
     return true
   })
 
-  const handleCancelContract = async (contract: ProviderContractItem) => {
-    const confirmed = window.confirm(
-      "¿Seguro que deseas dar de baja este contrato? El cliente dejará de tener el plan activo (modo prueba).",
-    )
-    if (!confirmed) return
+  const handleOpenCancelModal = (contract: ProviderContractItem) => {
+    setCancelTarget(contract)
+    setCancelReason("")
+  }
 
-    const supabase = createClient()
+  const handleConfirmCancel = async () => {
+    if (!cancelTarget) return
 
-    // 1) Si existe contrato, lo marcamos como cancelado
-    if (contract.contractId) {
-      const { error: contractError } = await supabase
-        .from("contracts")
-        .update({ status: "cancelled" })
-        .eq("id", contract.contractId)
-
-      if (contractError) {
-        console.error("Error cancelling provider contract", contractError)
-        toast({
-          title: "No se pudo dar de baja el contrato",
-          description: "Intenta nuevamente en unos minutos.",
-          variant: "destructive",
-        })
-        return
-      }
-    }
-
-    // 2) Siempre marcamos también la orden como cancelada para que no vuelva a aparecer
-    const { error: orderError } = await supabase
-      .from("orders")
-      .update({ status: "cancelled" })
-      .eq("id", contract.orderId)
-
-    if (orderError) {
-      console.error("Error cancelling provider order", orderError)
+    const reason = cancelReason.trim()
+    if (!reason) {
       toast({
-        title: "No se pudo dar de baja el contrato",
-        description: "Intenta nuevamente en unos minutos.",
+        title: "Motivo requerido",
+        description: "Ingresa un motivo para dar de baja el contrato.",
         variant: "destructive",
       })
       return
     }
 
-    setItems((prev) => prev.filter((c) => c.orderId !== contract.orderId))
-    toast({
-      title: "Contrato dado de baja",
-      description: "El contrato fue cancelado y ya no generará nuevos pagos (modo prueba).",
-    })
+    try {
+      const res = await fetch("/api/contracts/cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId: cancelTarget.orderId, reason }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        toast({
+          title: "No se pudo dar de baja el contrato",
+          description: (data as any)?.error || "Intenta nuevamente en unos minutos.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setItems((prev) => prev.filter((c) => c.orderId !== cancelTarget.orderId))
+      if (selected?.orderId === cancelTarget.orderId) {
+        setSelected(null)
+        setContractText(null)
+        setContractNumber(null)
+        setReceipts(null)
+        setSelectedReceiptIndex(null)
+      }
+
+      toast({
+        title: "Contrato dado de baja",
+        description: "El contrato fue cancelado y ya no generará nuevos pagos.",
+      })
+      setCancelTarget(null)
+      setCancelReason("")
+    } catch (e) {
+      console.error("Error cancelling provider contract", e)
+      toast({
+        title: "No se pudo dar de baja el contrato",
+        description: "Ocurrió un error inesperado. Intenta nuevamente.",
+        variant: "destructive",
+      })
+    }
   }
 
   const quotaStatusLabel = (paidAt: string | null) => {
-    if (!paidAt) return "Sin pagos registrados (modo prueba)"
+    if (!paidAt) return "Sin pagos registrados"
     const last = new Date(paidAt)
     const now = new Date()
     if (last.getFullYear() === now.getFullYear() && last.getMonth() === now.getMonth()) {
-      return "Cuota de este mes abonada (modo prueba)"
+      return "Cuota de este mes abonada"
     }
-    return "Sin pago registrado este mes (modo prueba)"
+    return "Sin pago registrado este mes"
   }
 
   if (loading) {
@@ -447,16 +399,54 @@ export function ProviderContracts() {
                   size="sm"
                   variant="outline"
                   className="border-red-200 text-red-600 hover:bg-red-50"
-                  onClick={() => handleCancelContract(item)}
+                  onClick={() => handleOpenCancelModal(item)}
                 >
                   Dar de baja contrato
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setSelected(item)}>
-                  Ver detalle del contrato
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    setSelected(item)
+                    await handleLoadReceipts(item)
+                  }}
+                >
+                  Ver detalle
                 </Button>
               </div>
             </Card>
           ))}
+        </div>
+      )}
+
+      {cancelTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <Card className="w-full max-w-md p-6 space-y-4 bg-white">
+            <h3 className="text-lg font-semibold">Dar de baja contrato</h3>
+            <p className="text-sm text-muted-foreground">
+              Estás por dar de baja el contrato del cliente {cancelTarget.clientName || cancelTarget.clientEmail || "Sin nombre"}.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              El motivo será notificado al cliente junto con la baja del plan.
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Motivo de la baja</label>
+              <textarea
+                className="w-full min-h-[90px] border rounded-md px-3 py-2 text-sm"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Describe brevemente por qué se da de baja este contrato."
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => { setCancelTarget(null); setCancelReason("") }}>
+                Volver
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmCancel}>
+                Confirmar baja
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 
@@ -513,53 +503,52 @@ export function ProviderContracts() {
               </div>
             )}
 
-            {receipt && (
-              <div className="space-y-1 text-sm mt-4">
-                <p className="font-medium">Último comprobante de pago</p>
-                <p className="text-xs text-muted-foreground">
-                  Recibo N° {receipt.receiptNumber} - Emitido el{" "}
-                  {new Date(receipt.issuedAt).toLocaleString("es-AR")}
-                </p>
-                <p className="text-xs text-muted-foreground">Importe pagado: ${receipt.amount.toFixed(2)}</p>
-                {receipt.details && (
-                  <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-64 overflow-auto">
-                    {receipt.details}
-                  </pre>
+            <div className="pt-4 space-y-2 border-t mt-2 text-sm">
+              <p className="font-medium">Selecciona un comprobante</p>
+              <div className="flex flex-wrap gap-2 items-center">
+                {receipts && receipts.length > 0 ? (
+                  <>
+                    <select
+                      className="border rounded-md px-2 py-1 text-xs"
+                      value={selectedReceiptIndex ?? 0}
+                      onChange={(e) => setSelectedReceiptIndex(Number(e.target.value))}
+                    >
+                      {receipts.map((r, idx) => {
+                        const issuedDate = new Date(r.issuedAt)
+                        const mes = String(issuedDate.getMonth() + 1).padStart(2, "0")
+                        const anio = issuedDate.getFullYear()
+                        const labelPeriodo = `${mes}/${anio}`
+
+                        return (
+                          <option key={r.receiptNumber} value={idx}>
+                            Recibo {r.receiptNumber} - {labelPeriodo}
+                          </option>
+                        )
+                      })}
+                    </select>
+                    <Button variant="outline" size="sm" onClick={handleOpenReceiptPdf}>
+                      Comprobante PDF
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {loadingReceipts
+                      ? "Cargando comprobantes..."
+                      : "Todavía no hay comprobantes de pago para este plan."}
+                  </p>
                 )}
               </div>
-            )}
+            </div>
 
-            <div className="pt-4 flex flex-wrap justify-end gap-2">
+            <div className="pt-2 flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                disabled={loadingContract}
-                onClick={() => handleViewContract(selected)}
+                onClick={() => selected && handleViewContract(selected)}
               >
-                {loadingContract ? "Cargando contrato..." : "Ver contrato"}
+                Ver contrato
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loadingReceipt}
-                onClick={() => handleViewLastReceipt(selected)}
-              >
-                {loadingReceipt ? "Cargando comprobante..." : "Ver último comprobante"}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handlePrintContract}>
-                Imprimir contrato
-              </Button>
-              <Button variant="outline" size="sm" onClick={handlePrintReceipt}>
-                Imprimir comprobante
-              </Button>
-              <Button
-                variant="outline"
-                className="border-red-200 text-red-600 hover:bg-red-50"
-                onClick={() => handleCancelContract(selected)}
-              >
-                Dar de baja contrato
-              </Button>
-              <Button variant="outline" onClick={() => setSelected(null)}>
+              <Button variant="outline" size="sm" onClick={() => setSelected(null)}>
                 Cerrar
               </Button>
             </div>
