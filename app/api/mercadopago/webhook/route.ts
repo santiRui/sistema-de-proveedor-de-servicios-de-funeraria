@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { decryptMpToken } from '@/lib/security/mpToken'
+import { sendWhatsAppTemplate } from '@/lib/whatsapp'
 
 type WebhookPayload = {
   type?: string
@@ -15,6 +16,7 @@ type PaymentResponse = {
   status: string
   external_reference?: string
   date_approved?: string | null
+  status_detail?: string | null
 }
 
 async function fetchPaymentDetail(accessToken: string, paymentId: string) {
@@ -147,10 +149,12 @@ async function handlePaymentNotification(params: {
   // Para eventos de creación de suscripción (subscription_preapproval) usamos directamente el preapproval_id
   // como referencia y asumimos estado aprobado.
   let payment: PaymentResponse | null = null
+  let isApproved = true
 
   if (params.eventType === 'subscription_preapproval') {
     // En este caso, params.paymentId es el preapproval_id de la suscripción
     // MP ya confirmó la creación de la suscripción, por lo que podemos tratarlo como aprobado.
+    isApproved = true
   } else {
     try {
       payment = await fetchPaymentDetail(accessToken, params.paymentId)
@@ -165,9 +169,7 @@ async function handlePaymentNotification(params: {
       return
     }
 
-    if (payment.status !== 'approved') {
-      return
-    }
+    isApproved = payment.status === 'approved'
   }
 
   const { data: order, error: orderError } = await admin
@@ -208,6 +210,12 @@ async function handlePaymentNotification(params: {
     .eq('id', order.provider_id)
     .maybeSingle()
 
+  const { data: clientProfile } = await admin
+    .from('profiles')
+    .select('full_name, phone')
+    .eq('id', order.client_id)
+    .maybeSingle()
+
   const meses = [
     'ENERO',
     'FEBRERO',
@@ -222,6 +230,37 @@ async function handlePaymentNotification(params: {
     'NOVIEMBRE',
     'DICIEMBRE',
   ]
+
+  // Si el pago no quedó aprobado (caso pago rechazado), podemos enviar notificación de fallo y salir.
+  if (!isApproved && payment) {
+    try {
+      const clientPhone = clientProfile?.phone?.trim()
+      if (clientPhone) {
+        const clientName = clientProfile?.full_name || (quotation as any)?.client_full_name || 'Cliente'
+        const planName = (service as any)?.name || 'plan de servicios'
+        const providerName = (providerProfile as any)?.business_name || 'Proveedor'
+
+        const serviceBillingMode = (service as any)?.billing_mode as string | undefined
+        const quotationBillingMode = (quotation as any)?.requested_billing_mode as string | undefined
+        const isMonthly = serviceBillingMode === 'monthly' || quotationBillingMode === 'monthly'
+
+        if (isMonthly) {
+          const reason = (payment.status_detail as string | null) || payment.status || 'Pago rechazado'
+          // payment_failed: {{1}} cliente, {{2}} plan, {{3}} proveedor, {{4}} motivo
+          await sendWhatsAppTemplate({
+            to: clientPhone,
+            templateName: 'payment_failed',
+            languageCode: 'es_AR',
+            variables: [clientName, planName, providerName, reason],
+          })
+        }
+      }
+    } catch (e) {
+      console.error('Webhook: failed sending WhatsApp payment_failed notification', e)
+    }
+
+    return
+  }
 
   // Si la orden aún no estaba marcada como pagada, la actualizamos y creamos el contrato si falta
   if (order.status !== 'paid') {
@@ -339,6 +378,43 @@ async function handlePaymentNotification(params: {
       if (contractError) {
         console.error('Webhook: failed creating contract', contractError)
       }
+    }
+
+    // Notificación WhatsApp: plan contratado (solo la primera vez que la orden pasa a paid)
+    try {
+      const clientPhone = clientProfile?.phone?.trim()
+      if (clientPhone) {
+        const clientName = clientProfile?.full_name || (quotation as any)?.client_full_name || 'Cliente'
+        const planName = (service as any)?.name || 'plan de servicios'
+        const providerName = (providerProfile as any)?.business_name || 'Proveedor'
+        const amountNumber = Number((order as any).amount) || 0
+
+        const serviceBillingMode = (service as any)?.billing_mode as string | undefined
+        const quotationBillingMode = (quotation as any)?.requested_billing_mode as string | undefined
+        const isMonthly = serviceBillingMode === 'monthly' || quotationBillingMode === 'monthly'
+
+        const paidDateLabel = paidDate.toLocaleDateString('es-AR')
+
+        if (isMonthly) {
+          // plan_contracted_monthly: {{1}} cliente, {{2}} plan, {{3}} proveedor, {{4}} fecha alta, {{5}} importe mensual
+          await sendWhatsAppTemplate({
+            to: clientPhone,
+            templateName: 'plan_contracted_monthly',
+            languageCode: 'es_AR',
+            variables: [clientName, planName, providerName, paidDateLabel, amountNumber.toFixed(2)],
+          })
+        } else {
+          // plan_contracted_one_time: {{1}} cliente, {{2}} plan, {{3}} proveedor, {{4}} fecha, {{5}} importe total
+          await sendWhatsAppTemplate({
+            to: clientPhone,
+            templateName: 'plan_contracted_one_time',
+            languageCode: 'es_AR',
+            variables: [clientName, planName, providerName, paidDateLabel, amountNumber.toFixed(2)],
+          })
+        }
+      }
+    } catch (e) {
+      console.error('Webhook: failed sending WhatsApp contracted plan notification', e)
     }
   }
 

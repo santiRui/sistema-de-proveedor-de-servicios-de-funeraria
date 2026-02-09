@@ -351,6 +351,20 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
     return <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 flex items-center gap-1"><Eye className="w-3 h-3" /> Vista</span>
   }
 
+  const triggerWhatsappQuotationResponded = async (quotationId: number) => {
+    try {
+      await fetch('/api/notifications/quotation-responded', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ quotationId }),
+      })
+    } catch (e) {
+      console.error('Error triggering WhatsApp quotation_responded', e)
+    }
+  }
+
   const openDetail = async (item: ProviderQuotationItem) => {
     setSelected(item)
     setPriceInput(item.proposedPrice != null ? String(item.proposedPrice) : "")
@@ -447,6 +461,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
               : q,
           ),
         )
+        await triggerWhatsappQuotationResponded(selected.id)
         setSelected(null)
         setPriceInput("")
         setProviderNotesInput("")
@@ -563,6 +578,8 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
         ),
       )
 
+      await triggerWhatsappQuotationResponded(selected.id)
+
       setSelected(null)
       setPriceInput("")
       setProviderNotesInput("")
@@ -648,6 +665,7 @@ export function ProviderQuotations({ focusClientRejected = false }: ProviderQuot
               : q,
           ),
         )
+        await triggerWhatsappQuotationResponded(selected.id)
         setSelected(null)
         setPriceInput("")
         setProviderNotesInput("")
