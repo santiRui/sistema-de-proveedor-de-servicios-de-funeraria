@@ -92,7 +92,14 @@ export async function signup(formData: FormData) {
   })
 
   if (error) {
-    return { error: error.message }
+    // Manejar caso específico: correo ya registrado u otros errores de Supabase
+    const message =
+      error.message.includes("already registered") ||
+      error.message.includes("User already registered")
+        ? "Este correo ya está registrado. Por favor inicia sesión o recupera tu contraseña."
+        : error.message
+
+    return { error: message }
   }
 
   // Si hay usuario pero NO hay sesión, significa que requiere confirmación de email

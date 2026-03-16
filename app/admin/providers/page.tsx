@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 import { getProvidersList } from "../actions"
 import { Card } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -7,6 +9,36 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
 export default async function AdminProvidersPage() {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect("/auth")
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  if (!profile || profile.role !== "admin") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-gray-50">
+        <h1 className="text-2xl font-bold text-red-600 mb-2">Acceso Restringido</h1>
+        <p className="text-gray-600 mb-4">
+          Esta cuenta está registrada como <strong>{profile?.role}</strong>, pero intentas acceder al panel de Administrador.
+        </p>
+        <a href="/auth" className="text-blue-600 hover:underline">
+          Volver al inicio de sesión
+        </a>
+      </div>
+    )
+  }
+
   const providers = await getProvidersList()
 
   return (
