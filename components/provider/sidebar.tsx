@@ -49,7 +49,7 @@ export function ProviderSidebar({ activeTab, onTabChange, role }: ProviderSideba
   }
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 text-gray-900 p-6 flex flex-col justify-between shadow-sm">
+    <aside className="w-64 h-screen bg-white border-r border-gray-200 text-gray-900 p-6 flex flex-col justify-between shadow-sm">
       <div>
         <div className="mb-8 flex items-center gap-3">
           <Image
