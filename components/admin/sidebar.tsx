@@ -20,11 +20,17 @@ const menuItems = [
   },
 ]
 
-export function Sidebar() {
+export function Sidebar({
+  isOpen,
+  onClose,
+}: {
+  isOpen?: boolean
+  onClose?: () => void
+}) {
   const pathname = usePathname()
 
-  return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
+  const sidebarContent = (
+    <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
       <div className="p-6 border-b border-emerald-100 flex items-center gap-3">
         <Image
           src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/image-huzKiElUb8p7PhCYTUKJxJ44hgTcVF.png"
@@ -37,8 +43,8 @@ export function Sidebar() {
            Admin Panel
         </h1>
       </div>
-      
-      <nav className="flex-1 p-4 space-y-2">
+
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {menuItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href
@@ -53,6 +59,7 @@ export function Sidebar() {
                   ? "bg-emerald-50 text-emerald-700 shadow-sm border border-emerald-100" 
                   : "text-gray-600 hover:bg-emerald-50/50 hover:text-emerald-800"
               )}
+              onClick={onClose}
             >
               <Icon className={cn("w-5 h-5", isActive ? "text-emerald-600" : "text-gray-400 group-hover:text-emerald-600")} />
               <span>{item.title}</span>
@@ -63,13 +70,38 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-gray-100">
         <button
-          onClick={() => signout()}
+          onClick={() => {
+            onClose?.()
+            signout()
+          }}
           className="flex items-center gap-3 px-4 py-3 w-full text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium group"
         >
           <LogOut className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
           <span>Cerrar Sesión</span>
         </button>
       </div>
+    </div>
+  )
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex h-screen sticky top-0">
+        {sidebarContent}
+      </div>
+
+      {/* Mobile sidebar as overlay */}
+      {isOpen && (
+        <div className="fixed inset-0 z-40 flex md:hidden">
+          <div
+            className="flex-1 bg-black/40"
+            onClick={onClose}
+          />
+          <div className="h-full bg-white shadow-xl">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
