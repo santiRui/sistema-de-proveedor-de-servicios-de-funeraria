@@ -93,13 +93,13 @@ export function Sidebar({
       {/* Mobile sidebar as overlay */}
       {isOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
+          <div className="h-full bg-white shadow-xl w-64">
+            {sidebarContent}
+          </div>
           <div
             className="flex-1 bg-black/40"
             onClick={onClose}
           />
-          <div className="h-full bg-white shadow-xl">
-            {sidebarContent}
-          </div>
         </div>
       )}
     </>
