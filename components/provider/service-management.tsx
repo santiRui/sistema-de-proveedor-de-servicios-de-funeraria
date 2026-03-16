@@ -455,6 +455,18 @@ export function ServiceManagement() {
             maxMembers: max_members,
           })
           setEditingId(null)
+          setFormData({
+            name: "",
+            description: "",
+            price: "",
+            billingMode: "one_time",
+            areas: serviceAreas,
+            images: [],
+            videos: [],
+            pdfs: [],
+            maxMembers: "1",
+          })
+          setIsAdding(false)
           toast({
             title: "Servicio actualizado",
             description: "Los cambios del plan se guardaron correctamente.",
@@ -501,6 +513,18 @@ export function ServiceManagement() {
             pdfs: formData.pdfs,
             maxMembers: max_members,
           })
+          setFormData({
+            name: "",
+            description: "",
+            price: "",
+            billingMode: "one_time",
+            areas: serviceAreas,
+            images: [],
+            videos: [],
+            pdfs: [],
+            maxMembers: "1",
+          })
+          setIsAdding(false)
           toast({
             title: "Servicio creado",
             description: "El nuevo plan quedó guardado correctamente.",
@@ -516,18 +540,7 @@ export function ServiceManagement() {
       })
     }
 
-    setFormData({
-      name: "",
-      description: "",
-      price: "",
-      billingMode: "one_time",
-      areas: serviceAreas,
-      images: [],
-      videos: [],
-      pdfs: [],
-      maxMembers: "1",
-    })
-    setIsAdding(false)
+    // Nota: solo reseteamos y cerramos el formulario en los casos de éxito anteriores
   }
 
   return (
@@ -571,8 +584,9 @@ export function ServiceManagement() {
       )}
 
       {(role !== "provider_employee") && (isAdding || editingId) && (
-        <Card className="p-6 bg-emerald-50 border border-emerald-200">
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 bg-emerald-50 border border-emerald-200 shadow-xl">
+            <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-900">Nombre del Servicio</label>
@@ -801,7 +815,7 @@ export function ServiceManagement() {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 sticky bottom-0 bg-emerald-50 pt-4">
               <Button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700" disabled={!isVerified}>
                 {editingId ? "Actualizar" : "Crear"} Servicio
               </Button>
@@ -827,8 +841,9 @@ export function ServiceManagement() {
                 Cancelar
               </Button>
             </div>
-          </form>
-        </Card>
+            </form>
+          </Card>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
