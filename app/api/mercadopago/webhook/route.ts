@@ -231,6 +231,21 @@ async function handlePaymentNotification(params: {
     'DICIEMBRE',
   ]
 
+  function formatCityProvince(value: string | null | undefined) {
+    if (!value) return ''
+
+    const parts = value
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+
+    if (parts.length === 2) {
+      return `${parts[1]}, ${parts[0]}`
+    }
+
+    return value
+  }
+
   // Si el pago no quedó aprobado (caso pago rechazado), podemos enviar notificación de fallo y salir.
   if (!isApproved && payment) {
     try {
@@ -289,7 +304,8 @@ async function handlePaymentNotification(params: {
     if (!existingContract) {
       const titularNombre = (quotation as any)?.client_full_name || ''
       const titularDni = (quotation as any)?.client_dni || ''
-      const titularDomicilio = (quotation as any)?.client_address || ''
+      const titularDomicilioRaw = (quotation as any)?.client_address || ''
+      const titularDomicilio = formatCityProvince(titularDomicilioRaw)
       const titularEdad = (quotation as any)?.client_age
         ? String((quotation as any).client_age)
         : ''
@@ -299,9 +315,9 @@ async function handlePaymentNotification(params: {
 
       const empresaNombre = (providerProfile as any)?.business_name || 'Proveedor de servicios'
       const empresaDomicilioPartes = [
-        (providerProfile as any)?.address,
-        (providerProfile as any)?.city,
         (providerProfile as any)?.province,
+        (providerProfile as any)?.city,
+        (providerProfile as any)?.address,
       ].filter(Boolean)
       const empresaDomicilio = empresaDomicilioPartes.join(', ')
 
